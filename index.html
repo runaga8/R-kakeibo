@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>R-KAKEIBO</title>
+    <title>R-KAKEIBO - クラウド同期版</title>
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="icon" type="image/png" href="icon.png">
     <style>
         :root { --primary: #5c6bc0; --danger: #ef5350; --edit: #ffca28; --success: #4caf50; --bg: #f5f7fa; --text: #37474f; }
         body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; background: var(--bg); color: var(--text); }
         .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        /* ログイン・ユーザー情報用スタイル */
+        .auth-container { text-align: center; padding: 40px 20px; }
+        .user-profile { display: flex; justify-content: space-between; align-items: center; background: #e8eaf6; padding: 10px 15px; border-radius: 8px; margin-bottom: 15px; font-size: 0.9em; }
+        .user-profile button { background: none; border: none; color: var(--danger); cursor: pointer; font-weight: bold; }
         
         /* 総資産表示スタイル */
         .total-assets { text-align: center; background: linear-gradient(135deg, #7986cb, #5c6bc0); color: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; }
@@ -82,186 +87,367 @@
         .rank-1 { background: #ffd700; color: #333; font-weight: bold; }
         .rank-2 { background: #c0c0c0; color: #333; font-weight: bold; }
         .rank-3 { background: #cd7f32; color: white; }
+        
+        /* ローディング画面 */
+        #loading-screen { display: flex; justify-content: center; align-items: center; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(255,255,255,0.9); z-index:9999; font-weight:bold; color:var(--primary); }
     </style>
 </head>
 <body>
 
-    <div class="total-assets">
-        <h2>💰 <span id="assets-title">現在</span>の総資産</h2>
-        <span class="amount" id="total-assets-amount">0円</span>
+    <!-- ローディング表示 -->
+    <div id="loading-screen">読み込み中...</div>
+
+    <!-- ログイン画面 -->
+    <div id="login-page" class="card auth-container" style="display: none;">
+        <h2>📊 R-KAKEIBO</h2>
+        <p>データをクラウドで安全に同期します。</p>
+        <button class="main-btn" onclick="loginWithGoogle()" style="margin-top: 20px;">Googleアカウントでログイン</button>
     </div>
 
-    <nav>
-        <button onclick="show('cal')" id="btn-cal" class="active">ホーム</button>
-        <button onclick="show('history-tab')" id="btn-history-tab">履歴</button>
-        <button onclick="show('analytics')" id="btn-analytics">📊 分析</button>
-        <button onclick="show('settings')" id="btn-settings">設定</button>
-    </nav>
-
-    <div id="cal-page" class="page active">
-        <div class="card" id="calendar-area"></div>
-
-        <div id="inline-input-card" class="card" style="display: none; border: 2px solid var(--primary);">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
-                <h2 id="form-title" style="margin:0; font-size:1.2em;">項目登録</h2>
-                <button onclick="closeInputForm()" style="background:none; border:none; font-size:1.5em; cursor:pointer; color:#999;">&times;</button>
-            </div>
-            <div class="sub-tabs">
-                <button id="tab-expense" class="active" onclick="switchInputMode('expense')">支出</button>
-                <button id="tab-income" onclick="switchInputMode('income')">収入</button>
-                <button id="tab-transfer" onclick="switchInputMode('transfer')">残高振替</button>
-            </div>
-            
-            <input type="hidden" id="edit-id">
-            <input type="date" id="date">
-            <input type="number" inputmode="numeric" id="price" placeholder="金額">
-            <input type="text" id="memo" placeholder="メモ">
-            
-            <div id="form-expense-group" class="input-sub-page active">
-                <label style="font-size:0.85em; color:#555;">カテゴリ</label>
-                <select id="cat"></select>
-                <label style="font-size:0.85em; color:#555;">支払うアカウント</label>
-                <select id="pay"></select>
-            </div>
-
-            <div id="form-income-group" class="input-sub-page">
-                <label style="font-size:0.85em; color:#555;">収入カテゴリ</label>
-                <select id="income-cat">
-                    <option value="給与">給与</option>
-                    <option value="ボーナス">ボーナス</option>
-                    <option value="副収入">副収入</option>
-                    <option value="その他収入">その他収入</option>
-                </select>
-                <label style="font-size:0.85em; color:#555;">入るアカウント</label>
-                <select id="income-pay"></select>
-            </div>
-
-            <div id="form-transfer-group" class="input-sub-page">
-                <label style="font-size:0.85em; color:#555;">振替元（出す口座）</label>
-                <select id="transfer-from"></select>
-                <label style="font-size:0.85em; color:#555;">振替先（入れる口座）</label>
-                <select id="transfer-to"></select>
-            </div>
-
-            <button class="main-btn" style="margin-top:15px;" onclick="save()">保存</button>
-        </div>
-
-        <div class="card">
-            <h3 id="summary-title">📊 今月の集計</h3>
-            <div class="summary-grid">
-                <div><h4>カテゴリ別支出</h4><div id="cat-sum"></div></div>
-                <div><h4><span class="current-month-label"></span>末日時点の残高</h4><div id="pay-sum"></div></div>
-            </div>
-        </div>
-        <div class="card" id="income-history"></div>
-        <div class="card" id="history"></div>
-        <div class="card" id="transfer-history"></div>
-    </div>
-
-    <div id="history-tab-page" class="page">
-        <div class="card">
-            <h3>📝 全期間の支出履歴</h3>
-            <div class="scroll-list" id="all-expense-list"></div>
-        </div>
-        <div class="card">
-            <h3>💰 全期間の収入履歴</h3>
-            <div class="scroll-list" id="all-income-list"></div>
-        </div>
-        <div class="card">
-            <h3>🔄 全期間の振替履歴</h3>
-            <div class="scroll-list" id="all-transfer-list"></div>
-        </div>
-    </div>
-
-    <div id="analytics-page" class="page">
-        <div class="card">
-            <div style="display: flex; justify-content: space-between; align-items: center;">
-                <h3>📅 年間収支レポート</h3>
-                <select id="analytics-year-select" onchange="renderAnalytics()" style="width: auto; padding: 6px; margin: 0;"></select>
-            </div>
-            <table class="analytics-table">
-                <thead>
-                    <tr>
-                        <th>月</th>
-                        <th>収入</th>
-                        <th>支出</th>
-                        <th>収支差</th>
-                    </tr>
-                </thead>
-                <tbody id="analytics-monthly-tbody"></tbody>
-            </table>
-        </div>
-
-        <div class="card">
-            <h3>🏆 年間カテゴリ別支出ランキング</h3>
-            <div id="analytics-cat-rank"></div>
-        </div>
-
-        <div class="card">
-            <h3>🏦 アカウント別 年間収支推移</h3>
-            <div id="analytics-account-report"></div>
-        </div>
-    </div>
-
-    <div id="settings-page" class="page">
-        <div class="card">
-            <h3>カテゴリ管理（支出）</h3>
-            <input type="hidden" id="edit-cat-old"><input type="text" id="new-cat" placeholder="カテゴリ名">
-            <button class="main-btn" onclick="updateCatSetting()">保存</button>
-            <div id="cat-list"></div>
-        </div>
-        <div class="card">
-            <h3>アカウント管理（初期残高設定）</h3>
-            <input type="hidden" id="edit-pay-old">
-            <input type="text" id="new-pay" placeholder="アカウント名 (例: 現金、クレカ)">
-            <input type="number" inputmode="numeric" id="new-pay-balance" placeholder="初期残高設定（円）" value="0">
-            <button class="main-btn" onclick="updatePaySetting()">保存</button>
-            <div id="pay-list"></div>
-        </div>
+    <!-- メインコンテンツ領域（ログイン後表示） -->
+    <div id="app-content" style="display: none;">
         
-        <div class="card">
-            <h3>データ管理（バックアップ＆復元）</h3>
-            <p style="font-size: 0.8em; color: #666; margin-bottom: 10px;">現在のデータをCSV形式で出力、または他端末から書き出されたCSVデータを貼り付けて復元（インポート）できます。</p>
+        <!-- ログイン中のユーザー情報 -->
+        <div class="user-profile">
+            <span id="user-display-name">ユーザー名</span>
+            <button onclick="logout()">ログアウト</button>
+        </div>
+
+        <div class="total-assets">
+            <h2>💰 <span id="assets-title">現在</span>の総資産</h2>
+            <span class="amount" id="total-assets-amount">0円</span>
+        </div>
+
+        <nav>
+            <button onclick="show('cal')" id="btn-cal" class="active">ホーム</button>
+            <button onclick="show('history-tab')" id="btn-history-tab">履歴</button>
+            <button onclick="show('analytics')" id="btn-analytics">📊 分析</button>
+            <button onclick="show('settings')" id="btn-settings">設定</button>
+        </nav>
+
+        <div id="cal-page" class="page active">
+            <div class="card" id="calendar-area"></div>
+
+            <div id="inline-input-card" class="card" style="display: none; border: 2px solid var(--primary);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                    <h2 id="form-title" style="margin:0; font-size:1.2em;">項目登録</h2>
+                    <button onclick="closeInputForm()" style="background:none; border:none; font-size:1.5em; cursor:pointer; color:#999;">&times;</button>
+                </div>
+                <div class="sub-tabs">
+                    <button id="tab-expense" class="active" onclick="switchInputMode('expense')">支出</button>
+                    <button id="tab-income" onclick="switchInputMode('income')">収入</button>
+                    <button id="tab-transfer" onclick="switchInputMode('transfer')">残高振替</button>
+                </div>
+                
+                <input type="hidden" id="edit-id">
+                <input type="date" id="date">
+                <input type="number" inputmode="numeric" id="price" placeholder="金額">
+                <input type="text" id="memo" placeholder="メモ">
+                
+                <div id="form-expense-group" class="input-sub-page active">
+                    <label style="font-size:0.85em; color:#555;">カテゴリ</label>
+                    <select id="cat"></select>
+                    <label style="font-size:0.85em; color:#555;">支払うアカウント</label>
+                    <select id="pay"></select>
+                </div>
+
+                <div id="form-income-group" class="input-sub-page">
+                    <label style="font-size:0.85em; color:#555;">収入カテゴリ</label>
+                    <select id="income-cat">
+                        <option value="給与">給与</option>
+                        <option value="ボーナス">ボーナス</option>
+                        <option value="副収入">副収入</option>
+                        <option value="その他収入">その他収入</option>
+                    </select>
+                    <label style="font-size:0.85em; color:#555;">入るアカウント</label>
+                    <select id="income-pay"></select>
+                </div>
+
+                <div id="form-transfer-group" class="input-sub-page">
+                    <label style="font-size:0.85em; color:#555;">振替元（出す口座）</label>
+                    <select id="transfer-from"></select>
+                    <label style="font-size:0.85em; color:#555;">振替先（入れる口座）</label>
+                    <select id="transfer-to"></select>
+                </div>
+
+                <button class="main-btn" style="margin-top:15px;" onclick="save()">保存</button>
+            </div>
+
+            <div class="card">
+                <h3 id="summary-title">📊 今月の集計</h3>
+                <div class="summary-grid">
+                    <div><h4>カテゴリ別支出</h4><div id="cat-sum"></div></div>
+                    <div><h4>末日時点の残高</h4><div id="pay-sum"></div></div>
+                </div>
+            </div>
             
-            <button class="main-btn" style="background:var(--success); margin-bottom: 8px;" onclick="exportCSV()">① データをCSVとして出力する</button>
-            <textarea id="csv-output" placeholder="ここにCSVデータが出力されます。インポートする際もここにCSVテキストを貼り付けてください。"></textarea>
+            <div class="card">
+                <h3>📋 本日の内訳</h3>
+                <div id="daily-history-list">データをタップするとここにその日の明細が出ます</div>
+            </div>
+        </div>
+
+        <div id="history-tab-page" class="page">
+            <div class="card">
+                <h3>📝 全期間の支出履歴</h3>
+                <div class="scroll-list" id="all-expense-list"></div>
+            </div>
+            <div class="card">
+                <h3>💰 全期間の収入履歴</h3>
+                <div class="scroll-list" id="all-income-list"></div>
+            </div>
+            <div class="card">
+                <h3>🔄 全期間の振替履歴</h3>
+                <div class="scroll-list" id="all-transfer-list"></div>
+            </div>
+        </div>
+
+        <div id="analytics-page" class="page">
+            <div class="card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h3>📅 年間収支レポート</h3>
+                    <select id="analytics-year-select" onchange="renderAnalytics()" style="width: auto; padding: 6px; margin: 0;"></select>
+                </div>
+                <table class="analytics-table">
+                    <thead>
+                        <tr><th>月</th><th>収入</th><th>支出</th><th>収支差</th></tr>
+                    </thead>
+                    <tbody id="analytics-monthly-tbody"></tbody>
+                </table>
+            </div>
+
+            <div class="card">
+                <h3>🏆 年間カテゴリ別支出ランキング</h3>
+                <div id="analytics-cat-rank"></div>
+            </div>
+        </div>
+
+        <div id="settings-page" class="page">
+            <div class="card">
+                <h3>カテゴリ管理（支出）</h3>
+                <input type="text" id="new-cat" placeholder="カテゴリ名">
+                <button class="main-btn" onclick="addCatSetting()">追加</button>
+                <div id="cat-list" style="margin-top:10px;"></div>
+            </div>
             
-            <button class="main-btn" style="background:var(--primary); margin-top: 5px;" onclick="importCSV()">② 上記のCSVからデータを復元する</button>
-            
-            <hr style="border: 0; border-top: 1px dashed #ddd; margin: 20px 0;">
-            <button class="danger-btn" onclick="resetAllData()">データをすべて削除（初期化）</button>
+            <div class="card">
+                <h3>アカウント管理（初期残高設定）</h3>
+                <input type="text" id="new-pay" placeholder="アカウント名 (例: 現金、銀行)">
+                <input type="number" id="new-pay-balance" placeholder="初期残高（円）" value="0">
+                <button class="main-btn" onclick="addPaySetting()">追加</button>
+                <div id="pay-list" style="margin-top:10px;"></div>
+            </div>
         </div>
     </div>
 
-    <script>
-        const KEY_DATA = 'kakeibo_data', KEY_CATS = 'cats', KEY_PAYS_OBJ = 'pays_obj';
-        
+    <!-- 1. Firebase公式スクリプトの読み込み -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { getFirestore, doc, setDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // ==========================================
+        // ⚠️ 重要：ここにあなたのFirebaseの鍵を貼ります（手順後述）
+        // ==========================================
+        // Your web app's Firebase configuration
+				const firebaseConfig = {
+			  apiKey: "AIzaSyCX0y2SjoFdJXaqxJ3S6su__v701WJJ8yM",
+			  authDomain: "runaga-kakeibo-app.firebaseapp.com",
+ 				projectId: "runaga-kakeibo-app",
+			  storageBucket: "runaga-kakeibo-app.firebasestorage.app",
+			  messagingSenderId: "1045932055793",
+			  appId: "1:1045932055793:web:ae6dfb0fce61a2a7a91d50"
+				};
+
+        // Firebase初期化
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        const provider = new GoogleAuthProvider();
+
+        // グローバル変数
+        let currentUser = null;
+        let kakeiboData = []; 
+        let categories = ["食費", "趣味", "日用品", "交通費", "交際費"];
+        let accounts = {"現金": 10000, "銀行": 200000};
         let currentDisplayDate = new Date();
         let currentInputMode = 'expense';
+        let selectedDateStr = "";
 
-        document.addEventListener('DOMContentLoaded', () => {
-            initUI();
-            updateHomeView();
+        // ログイン処理（ボタンから呼べるようにwindowに紐付け）
+        window.loginWithGoogle = () => {
+            signInWithPopup(auth, provider).catch(err => alert("ログインエラー: " + err.message));
+        };
+
+        // ログアウト処理
+        window.logout = () => {
+            signOut(auth).then(() => location.reload());
+        };
+
+        // ユーザーのログイン状態を見張る機能
+        onAuthStateChanged(auth, (user) => {
+            document.getElementById('loading-screen').style.display = 'none';
+            if (user) {
+                currentUser = user;
+                document.getElementById('login-page').style.display = 'none';
+                document.getElementById('app-content').style.display = 'block';
+                document.getElementById('user-display-name').innerText = user.displayName + " さん";
+                
+                // ログイン成功後、クラウドからリアルタイムにデータを読み込む
+                syncCloudData();
+            } else {
+                document.getElementById('login-page').style.display = 'block';
+                document.getElementById('app-content').style.display = 'none';
+            }
         });
 
-        function show(p) {
-            document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(p + '-page').classList.add('active');
-            document.getElementById('btn-' + p).classList.add('active');
+        // クラウドと同期するメイン関数
+        function syncCloudData() {
+            if (!currentUser) return;
+            const userDocRef = doc(db, "users", currentUser.uid);
+
+            // クラウドにデータが追加・変更されたら自動で画面を更新する
+            onSnapshot(userDocRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const cloudData = docSnap.data();
+                    kakeiboData = cloudData.kakeiboData || [];
+                    categories = cloudData.categories || ["食費", "趣味", "日用品", "交通費", "交際費"];
+                    accounts = cloudData.accounts || {"現金": 10000, "銀行": 200000};
+                } else {
+                    // クラウドにまだデータがない初期ユーザーの場合
+                    saveToCloud();
+                }
+                initUI();
+                updateHomeView();
+            });
+        }
+
+        // クラウドにデータをガサッと保存する共通関数
+        async function saveToCloud() {
+            if (!currentUser) return;
+            const userDocRef = doc(db, "users", currentUser.uid);
+            await setDoc(userDocRef, {
+                kakeiboData: kakeiboData,
+                categories: categories,
+                accounts: accounts
+            });
+        }
+
+        // 画面の初期化（セレクトボックスや設定一覧の更新）
+        function initUI() {
+            document.getElementById('cat').innerHTML = categories.map(i => `<option value="${i}">${i}</option>`).join('');
+            document.getElementById('cat-list').innerHTML = categories.map(i => `
+                <div class="setting-item"><span>${i}</span><button class="btn-del" data-cat="${i}">削</button></div>`).join('');
+
+            const accountsHtml = Object.keys(accounts).map(i => `<option value="${i}">${i}</option>`).join('');
+            document.getElementById('pay').innerHTML = accountsHtml;
+            document.getElementById('income-pay').innerHTML = accountsHtml;
+            document.getElementById('transfer-from').innerHTML = accountsHtml;
+            document.getElementById('transfer-to').innerHTML = accountsHtml;
             
+            document.getElementById('pay-list').innerHTML = Object.keys(accounts).map(i => `
+                <div class="setting-item">
+                    <div class="info"><span>${i}</span><span class="balance">初期残高: ${parseInt(accounts[i]).toLocaleString()}円</span></div>
+                    <button class="btn-del" data-pay="${i}">削</button>
+                </div>`).join('');
+
+            // 削除ボタンのイベント紐付け
+            document.querySelectorAll('#cat-list .btn-del').forEach(btn => {
+                btn.onclick = () => delCatSetting(btn.getAttribute('data-cat'));
+            });
+            document.querySelectorAll('#pay-list .btn-del').forEach(btn => {
+                btn.onclick = () => delPaySetting(btn.getAttribute('data-pay'));
+            });
+        }
+
+        // ホーム画面の更新
+        function updateHomeView() {
+            renderCalendar();
+            renderDashboard();
+            renderDailyHistory();
+        }
+
+        // カレンダー描画
+        function renderCalendar() {
+            const year = currentDisplayDate.getFullYear();
+            const month = currentDisplayDate.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const lastDate = new Date(year, month + 1, 0).getDate();
+            
+            const todayObj = new Date();
+            const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth()+1).padStart(2,'0')}-${String(todayObj.getDate()).padStart(2,'0')}`;
+            
+            const dailyExpenseSum = {};
+            const dailyIncomeSum = {};
+            
+            kakeiboData.forEach(item => {
+                if(item.date) {
+                    if(item.type === 'expense') {
+                        dailyExpenseSum[item.date] = (dailyExpenseSum[item.date] || 0) + parseInt(item.price || 0);
+                    } else if(item.type === 'income') {
+                        dailyIncomeSum[item.date] = (dailyIncomeSum[item.date] || 0) + parseInt(item.price || 0);
+                    }
+                }
+            });
+            
+            let html = `
+                <div class="calendar-header">
+                    <button class="cal-nav-btn" id="cal-prev">◀ 前月</button>
+                    <h3>${year}年 ${month+1}月</h3>
+                    <button class="cal-nav-btn" id="cal-next">次月 ▶</button>
+                </div>
+                <table><tr><th>日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th>土</th></tr><tr>`;
+                
+            for(let i=0; i<firstDay; i++) html += '<td></td>';
+            for(let d=1; d<=lastDate; d++) {
+                if((firstDay + d - 1) % 7 === 0 && d !== 1) html += '</tr><tr>';
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                
+                let priceHtml = '';
+                if(dailyExpenseSum[dateStr]) priceHtml += `<span class="day-price color-expense">-${dailyExpenseSum[dateStr].toLocaleString()}円</span>`;
+                if(dailyIncomeSum[dateStr]) priceHtml += `<span class="day-price color-income">+${dailyIncomeSum[dateStr].toLocaleString()}円</span>`;
+                
+                const isToday = (dateStr === todayStr) ? ' class="calendar-td-today"' : '';
+                
+                html += `<td${isToday} data-date="${dateStr}" class="cal-cell">
+                            <span class="day-num">${d}</span>
+                            ${priceHtml}
+                         </td>`;
+            }
+            html += '</tr></table>';
+            document.getElementById('calendar-area').innerHTML = html;
+
+            // イベント付与
+            document.getElementById('cal-prev').onclick = () => changeMonth(-1);
+            document.getElementById('cal-next').onclick = () => changeMonth(1);
+            document.querySelectorAll('.cal-cell').forEach(cell => {
+                cell.onclick = () => openInputFormForDate(cell.getAttribute('data-date'));
+            });
+        }
+
+        function changeMonth(offset) {
+            currentDisplayDate.setMonth(currentDisplayDate.getMonth() + offset);
+            updateHomeView();
             closeInputForm();
-            
-            if(p === 'history-tab') renderAllSettingsLists();
-            if(p === 'analytics') { buildYearSelect(); renderAnalytics(); }
-            if(p === 'cal') updateHomeView();
         }
 
-        function closeInputForm() {
+        function openInputFormForDate(dateStr) {
+            selectedDateStr = dateStr;
+            document.getElementById('edit-id').value = '';
+            document.getElementById('date').value = dateStr;
+            document.getElementById('price').value = '';
+            document.getElementById('memo').value = '';
+            switchInputMode('expense');
+            document.getElementById('inline-input-card').style.display = 'block';
+            document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
+            renderDailyHistory();
+        }
+
+        window.closeInputForm = () => {
             document.getElementById('inline-input-card').style.display = 'none';
-        }
+        };
 
-        function switchInputMode(mode) {
+        window.switchInputMode = (mode) => {
             currentInputMode = mode;
             document.getElementById('tab-expense').classList.toggle('active', mode === 'expense');
             document.getElementById('tab-income').classList.toggle('active', mode === 'income');
@@ -272,599 +458,270 @@
             document.getElementById('form-transfer-group').classList.toggle('active', mode === 'transfer');
             
             const isEdit = document.getElementById('edit-id').value !== '';
-            if(mode === 'expense') {
-                document.getElementById('form-title').innerText = isEdit ? '支出の編集' : '支出の登録';
-            } else if(mode === 'income') {
-                document.getElementById('form-title').innerText = isEdit ? '収入の編集' : '収入の登録';
-            } else {
-                document.getElementById('form-title').innerText = isEdit ? '振替の編集' : '残高振替';
-            }
-        }
+            document.getElementById('form-title').innerText = isEdit ? '項目の編集' : (mode==='expense'?'支出の登録':mode==='income'?'収入の登録':'残高振替');
+        };
 
-        function updateHomeView() {
-            renderCalendar();
-            renderDashboard();
-        }
-
-        function changeMonth(offset) {
-            currentDisplayDate.setMonth(currentDisplayDate.getMonth() + offset);
-            updateHomeView();
-            closeInputForm();
-        }
-
-        function renderCalendar() {
-            const year = currentDisplayDate.getFullYear();
-            const month = currentDisplayDate.getMonth();
-            const firstDay = new Date(year, month, 1).getDay();
-            const lastDate = new Date(year, month + 1, 0).getDate();
-            
-            const todayObj = new Date();
-            const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth()+1).padStart(2,'0')}-${String(todayObj.getDate()).padStart(2,'0')}`;
-            
-            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            
-            const dailyExpenseSum = {};
-            const dailyIncomeSum = {};
-            
-            data.forEach(item => {
-                if(item.start) {
-                    if(item.type === 'expense') {
-                        dailyExpenseSum[item.start] = (dailyExpenseSum[item.start] || 0) + parseInt(item.price || 0);
-                    } else if(item.type === 'income') {
-                        dailyIncomeSum[item.start] = (dailyIncomeSum[item.start] || 0) + parseInt(item.price || 0);
-                    }
-                }
-            });
-            
-            let html = `
-                <div class="calendar-header">
-                    <button class="cal-nav-btn" onclick="changeMonth(-1)">◀ 前月</button>
-                    <h3>${year}年 ${month+1}月</h3>
-                    <button class="cal-nav-btn" onclick="changeMonth(1)">次月 ▶</button>
-                </div>
-                <table><tr><th>日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th>土</th></tr><tr>`;
-                
-            for(let i=0; i<firstDay; i++) html += '<td></td>';
-            for(let d=1; d<=lastDate; d++) {
-                if((firstDay + d - 1) % 7 === 0 && d !== 1) html += '</tr><tr>';
-                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
-                
-                let priceHtml = '';
-                if(dailyExpenseSum[dateStr]) {
-                    priceHtml += `<span class="day-price color-expense">-${dailyExpenseSum[dateStr].toLocaleString()}円</span>`;
-                }
-                if(dailyIncomeSum[dateStr]) {
-                    priceHtml += `<span class="day-price color-income">+${dailyIncomeSum[dateStr].toLocaleString()}円</span>`;
-                }
-                
-                const isToday = (dateStr === todayStr) ? ' class="calendar-td-today"' : '';
-                
-                html += `<td${isToday} onclick="openInputFormForDate('${dateStr}')">
-                            <span class="day-num">${d}</span>
-                            ${priceHtml}
-                         </td>`;
-            }
-            html += '</tr></table>';
-            document.getElementById('calendar-area').innerHTML = html;
-        }
-
-        function openInputFormForDate(dateStr) {
-            document.getElementById('edit-id').value = '';
-            document.getElementById('date').value = dateStr;
-            document.getElementById('price').value = '';
-            document.getElementById('memo').value = '';
-            switchInputMode('expense');
-            document.getElementById('inline-input-card').style.display = 'block';
-            document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
-        }
-
-        function getAccountData() {
-            const raw = localStorage.getItem(KEY_PAYS_OBJ);
-            if (!raw) return {"現金": 10000, "銀行": 200000};
-            try { return JSON.parse(raw); } catch(e) { return {"現金": 10000, "銀行": 200000}; }
-        }
-
-        function initUI() {
-            const cats = JSON.parse(localStorage.getItem('cats') || '["食費", "趣味"]');
-            const paysObj = getAccountData();
-
-            document.getElementById('cat').innerHTML = cats.map(i => `<option value="${i}">${i}</option>`).join('');
-            document.getElementById('cat-list').innerHTML = cats.map(i => `
-                <div class="setting-item">${i} <div>
-                <button class="btn-edit" onclick="editCatSetting('${i}')">編</button>
-                <button class="btn-del" onclick="delCatSetting('${i}')">削</button></div></div>`).join('');
-
-            const accountsHtml = Object.keys(paysObj).map(i => `<option value="${i}">${i}</option>`).join('');
-            document.getElementById('pay').innerHTML = accountsHtml;
-            document.getElementById('income-pay').innerHTML = accountsHtml;
-            document.getElementById('transfer-from').innerHTML = accountsHtml;
-            document.getElementById('transfer-to').innerHTML = accountsHtml;
-
-            document.getElementById('pay-list').innerHTML = Object.entries(paysObj).map(([name, val]) => `
-                <div class="setting-item">
-                    <div class="info"><span class="name">${name}</span><span class="balance">開始設定残高: ${val}円</span></div>
-                    <div>
-                    <button class="btn-edit" onclick="editPaySettingField('${name}', ${val})">編</button>
-                    <button class="btn-del" onclick="delPaySetting('${name}')">削</button></div>
-                </div>`).join('');
-        }
-
-        function renderDashboard() {
-            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            const year = currentDisplayDate.getFullYear();
-            const month = currentDisplayDate.getMonth();
-            
-            const targetMonthStr = `${year}-${String(month+1).padStart(2,'0')}`;
-            const filteredData = data.filter(item => item.start && item.start.startsWith(targetMonthStr));
-
-            document.getElementById('summary-title').innerText = `📊 ${month+1}月の集計`;
-            document.querySelectorAll('.current-month-label').forEach(el => el.innerText = `${month+1}月`);
-            document.getElementById('assets-title').innerText = `${month+1}月末時点`;
-
-            const cats={};
-            filteredData.forEach(i => { 
-                if(i.type === 'expense') cats[i.cat] = (cats[i.cat] || 0) + parseInt(i.price || 0); 
-            });
-            document.getElementById('cat-sum').innerHTML = Object.entries(cats).map(([k,v]) => `<div class="summary-item">${k}<span>${v}円</span></div>`).join('');
-            
-            const accountBalances = getAccountData();
-            const displayMonthLastDay = new Date(year, month + 1, 0);
-
-            data.forEach(i => {
-                if(!i.start) return;
-                const entryDate = new Date(i.start);
-                if (entryDate > displayMonthLastDay) return;
-
-                if(i.type === 'transfer') {
-                    if (accountBalances[i.fromAccount] !== undefined) accountBalances[i.fromAccount] -= parseInt(i.price || 0);
-                    if (accountBalances[i.toAccount] !== undefined) accountBalances[i.toAccount] += parseInt(i.price || 0);
-                } else if(i.type === 'income') {
-                    if (accountBalances[i.pay] !== undefined) accountBalances[i.pay] += parseInt(i.price || 0);
-                } else {
-                    if (accountBalances[i.pay] !== undefined) accountBalances[i.pay] -= parseInt(i.price || 0);
-                }
-            });
-
-            let totalAssets = 0;
-            Object.values(accountBalances).forEach(b => totalAssets += b);
-            document.getElementById('total-assets-amount').innerText = `${totalAssets.toLocaleString()}円`;
-            document.getElementById('pay-sum').innerHTML = Object.entries(accountBalances).map(([k,v]) => `<div class="summary-item">${k}<span>${v.toLocaleString()}円</span></div>`).join('');
-            
-            const incomesData = filteredData.filter(i => i.type === 'income');
-            let incomeHtml = `<h3>💰 ${month+1}月の収入履歴</h3>`;
-            if(incomesData.length === 0) incomeHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">収入はありません</p>';
-            incomeHtml += incomesData.map(i => {
-                let txt = `<strong>${i.start}</strong> [${i.cat}] <span style="color:var(--success); font-weight:bold;">+${parseInt(i.price).toLocaleString()}円</span> <small style="color:#888;">(${i.pay})</small>`;
-                if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
-                return `<div class="history-item" style="border-left: 4px solid var(--success); padding-left: 8px;"><div>${txt}</div><div class="history-actions"><button class="btn-edit" onclick="edit('${i.id}')">編集</button><button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button></div></div>`;
-            }).join('');
-            document.getElementById('income-history').innerHTML = incomeHtml;
-
-            const expensesData = filteredData.filter(i => i.type === 'expense');
-            let expenseHtml = `<h3>📝 ${month+1}月の支出履歴</h3>`;
-            if(expensesData.length === 0) expenseHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">支出はありません</p>';
-            expenseHtml += expensesData.map(i => {
-                let txt = `<strong>${i.start}</strong> ${i.cat} ${parseInt(i.price).toLocaleString()}円 <small style="color:#888;">(${i.pay})</small>`;
-                if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
-                return `<div class="history-item"><div>${txt}</div><div class="history-actions"><button class="btn-edit" onclick="edit('${i.id}')">編集</button><button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button></div></div>`;
-            }).join('');
-            document.getElementById('history').innerHTML = expenseHtml;
-
-            const transfersData = filteredData.filter(i => i.type === 'transfer');
-            let transferHtml = `<h3>🔄 ${month+1}月の振替履歴</h3>`;
-            if(transfersData.length === 0) transferHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">振替履歴はありません</p>';
-            transferHtml += transfersData.map(i => {
-                let txt = `<strong>${i.start}</strong> ${i.fromAccount} ➔ ${i.toAccount} : ${parseInt(i.price).toLocaleString()}円`;
-                if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
-                return `<div class="history-item" style="border-left: 4px solid var(--primary); padding-left: 8px;"><div>${txt}</div><div class="history-actions"><button class="btn-edit" onclick="edit('${i.id}')">編集</button><button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button></div></div>`;
-            }).join('');
-            document.getElementById('transfer-history').innerHTML = transferHtml;
-        }
-
-        function renderAllSettingsLists() {
-            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            const sortedData = [...data].sort((a,b) => new Date(b.start) - new Date(a.start));
-
-            const allExpenses = sortedData.filter(i => i.type === 'expense');
-            let expHtml = '';
-            if(allExpenses.length === 0) {
-                expHtml = '<p style="color:#888; font-size:0.9em; padding:10px; text-align:center;">支出データがありません</p>';
-            } else {
-                expHtml = allExpenses.map(i => {
-                    let txt = `<strong>${i.start}</strong> ${i.cat} <span style="color:var(--danger); font-weight:bold;">${parseInt(i.price).toLocaleString()}円</span> <small style="color:#888;">(${i.pay})</small>`;
-                    if(i.memo) txt += `<br><span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
-                    return `
-                    <div class="history-item" style="padding:8px 5px; margin-bottom:5px; background:white;">
-                        <div style="font-size:0.9em; line-height:1.4;">${txt}</div>
-                        <div class="history-actions">
-                            <button class="btn-edit" onclick="edit('${i.id}')">編集</button>
-                            <button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button>
-                        </div>
-                    </div>`;
-                }).join('');
-            }
-            document.getElementById('all-expense-list').innerHTML = expHtml;
-
-            const allIncomes = sortedData.filter(i => i.type === 'income');
-            let incHtml = '';
-            if(allIncomes.length === 0) {
-                incHtml = '<p style="color:#888; font-size:0.9em; padding:10px; text-align:center;">収入データがありません</p>';
-            } else {
-                incHtml = allIncomes.map(i => {
-                    let txt = `<strong>${i.start}</strong> [${i.cat}] <span style="color:var(--success); font-weight:bold;">+${parseInt(i.price).toLocaleString()}円</span> <small style="color:#888;">(${i.pay})</small>`;
-                    if(i.memo) txt += `<br><span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
-                    return `
-                    <div class="history-item" style="border-left: 4px solid var(--success); padding:8px 5px; margin-bottom:5px; background:white;">
-                        <div style="font-size:0.9em; line-height:1.4;">${txt}</div>
-                        <div class="history-actions">
-                            <button class="btn-edit" onclick="edit('${i.id}')">編集</button>
-                            <button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button>
-                        </div>
-                    </div>`;
-                }).join('');
-            }
-            document.getElementById('all-income-list').innerHTML = incHtml;
-
-            const allTransfers = sortedData.filter(i => i.type === 'transfer');
-            let trfHtml = '';
-            if(allTransfers.length === 0) {
-                trfHtml = '<p style="color:#888; font-size:0.9em; padding:10px; text-align:center;">振替データがありません</p>';
-            } else {
-                trfHtml = allTransfers.map(i => {
-                    let txt = `<strong>${i.start}</strong> ${i.fromAccount} ➔ ${i.toAccount}<br><span style="color:var(--primary); font-weight:bold;">${parseInt(i.price).toLocaleString()}円</span>`;
-                    if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px; margin-left:5px;">${i.memo}</span>`;
-                    return `
-                    <div class="history-item" style="border-left: 4px solid var(--primary); padding:8px 5px; margin-bottom:5px; background:white;">
-                        <div style="font-size:0.9em; line-height:1.4;">${txt}</div>
-                        <div class="history-actions">
-                            <button class="btn-edit" onclick="edit('${i.id}')">編集</button>
-                            <button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button>
-                        </div>
-                    </div>`;
-                }).join('');
-            }
-            document.getElementById('all-transfer-list').innerHTML = trfHtml;
-        }
-
-        function buildYearSelect() {
-            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            const years = new Set();
-            years.add(new Date().getFullYear());
-            data.forEach(i => { if(i.start) years.add(new Date(i.start).getFullYear()); });
-            
-            const sortedYears = Array.from(years).sort((a,b) => b - a);
-            const select = document.getElementById('analytics-year-select');
-            const savedVal = select.value;
-            select.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
-            if(savedVal && sortedYears.includes(parseInt(savedVal))) { select.value = savedVal; }
-        }
-
-        function renderAnalytics() {
-            const targetYear = parseInt(document.getElementById('analytics-year-select').value || new Date().getFullYear());
-            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            
-            const monthlyReport = Array.from({length: 12}, () => ({ income: 0, expense: 0 }));
-            const catRankObj = {};
-            const accountReportObj = {};
-
-            let totalIncome = 0;
-            let totalExpense = 0;
-
-            data.forEach(item => {
-                if(!item.start) return;
-                const d = new Date(item.start);
-                if(d.getFullYear() !== targetYear) return;
-
-                const monthIdx = d.getMonth();
-                const price = parseInt(item.price || 0);
-
-                if(item.type === 'income') {
-                    monthlyReport[monthIdx].income += price;
-                    totalIncome += price;
-                    if(item.pay) {
-                        if(!accountReportObj[item.pay]) accountReportObj[item.pay] = { income:0, expense:0 };
-                        accountReportObj[item.pay].income += price;
-                    }
-                } else if(item.type === 'expense') {
-                    monthlyReport[monthIdx].expense += price;
-                    totalExpense += price;
-                    catRankObj[item.cat] = (catRankObj[item.cat] || 0) + price;
-                    if(item.pay) {
-                        if(!accountReportObj[item.pay]) accountReportObj[item.pay] = { income:0, expense:0 };
-                        accountReportObj[item.pay].expense += price;
-                    }
-                }
-            });
-
-            let tbodyHtml = '';
-            const totalDiff = totalIncome - totalExpense;
-            let totalDiffStyle = '';
-            if(totalDiff > 0) totalDiffStyle = 'color:var(--success); font-weight:bold;';
-            if(totalDiff < 0) totalDiffStyle = 'color:var(--danger);';
-            
-            tbodyHtml += `
-                <tr class="analytics-total-row">
-                    <td>合計</td>
-                    <td style="color:var(--success);">${totalIncome > 0 ? totalIncome.toLocaleString() + '円' : '0円'}</td>
-                    <td style="color:var(--danger);">${totalExpense > 0 ? totalExpense.toLocaleString() + '円' : '0円'}</td>
-                    <td style="${totalDiffStyle}">${totalDiff !== 0 ? (totalDiff > 0 ? '+' : '') + totalDiff.toLocaleString() + '円' : '0円'}</td>
-                </tr>`;
-
-            for(let m=0; m<12; m++) {
-                const inc = monthlyReport[m].income;
-                const exp = monthlyReport[m].expense;
-                const diff = inc - exp;
-                let diffStyle = '';
-                if(diff > 0) diffStyle = 'color:var(--success); font-weight:bold;';
-                if(diff < 0) diffStyle = 'color:var(--danger);';
-
-                tbodyHtml += `
-                    <tr>
-                        <td>${m+1}月</td>
-                        <td style="color:var(--success);">${inc > 0 ? inc.toLocaleString() + '円' : '-'}</td>
-                        <td style="color:var(--danger);">${exp > 0 ? exp.toLocaleString() + '円' : '-'}</td>
-                        <td style="${diffStyle}">${diff !== 0 ? (diff > 0 ? '+' : '') + diff.toLocaleString() + '円' : '0円'}</td>
-                    </tr>`;
-            }
-            document.getElementById('analytics-monthly-tbody').innerHTML = tbodyHtml;
-
-            const sortedCats = Object.entries(catRankObj).sort((a,b) => b[1] - a[1]);
-            let rankHtml = '';
-            if(sortedCats.length === 0) {
-                rankHtml = '<p style="color:#888; font-size:0.9em; padding:10px;">支出データがありません</p>';
-            } else {
-                rankHtml = sortedCats.map(([cat, val], idx) => {
-                    const r = idx + 1;
-                    const badgeClass = r <= 3 ? `rank-badge rank-${r}` : 'rank-badge';
-                    return `<div class="summary-item">
-                        <div><span class="${badgeClass}">${r}</span>${cat}</div>
-                        <span>${val.toLocaleString()}円</span>
-                    </div>`;
-                }).join('');
-            }
-            document.getElementById('analytics-cat-rank').innerHTML = rankHtml;
-
-            let accHtml = '';
-            const entries = Object.entries(accountReportObj);
-            if(entries.length === 0) {
-                accHtml = '<p style="color:#888; font-size:0.9em; padding:10px;">データがありません</p>';
-            } else {
-                accHtml = entries.map(([acc, val]) => {
-                    return `<div style="border-bottom:1px solid #eee; padding:10px 0; font-size:0.9em;">
-                        <strong>🏦 ${acc}</strong>
-                        <div style="display:flex; justify-content:space-between; margin-top:4px; color:#666; font-size:0.85em;">
-                            <span>収入合計: <span style="color:var(--success);">+${val.income.toLocaleString()}円</span></span>
-                            <span>支出合計: <span style="color:var(--danger);">${val.expense.toLocaleString()}円</span></span>
-                        </div>
-                    </div>`;
-                }).join('');
-            }
-            document.getElementById('analytics-account-report').innerHTML = accHtml;
-        }
-
-        function save() {
-            let data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+        // データ保存（追加・編集）
+        window.save = async () => {
             const id = document.getElementById('edit-id').value;
-            const targetDate = document.getElementById('date').value;
-            const price = document.getElementById('price').value;
+            const date = document.getElementById('date').value;
+            const price = parseInt(document.getElementById('price').value) || 0;
             const memo = document.getElementById('memo').value;
             
-            let entry = { id: id || Date.now().toString(), start: targetDate, price: price, memo: memo, type: currentInputMode };
-            
-            if(currentInputMode === 'transfer') {
-                entry.fromAccount = document.getElementById('transfer-from').value;
-                entry.toAccount = document.getElementById('transfer-to').value;
-                if(entry.fromAccount === entry.toAccount) { alert('同じアカウント同士での振替はできません'); return; }
+            if(!date || price <= 0) { alert("日付と金額を正しく入力してください"); return; }
+
+            const newItem = { id: id || 'id_' + Date.now(), type: currentInputMode, date, price, memo };
+
+            if(currentInputMode === 'expense') {
+                newItem.cat = document.getElementById('cat').value;
+                newItem.pay = document.getElementById('pay').value;
             } else if(currentInputMode === 'income') {
-                entry.cat = document.getElementById('income-cat').value;
-                entry.pay = document.getElementById('income-pay').value;
+                newItem.cat = document.getElementById('income-cat').value;
+                newItem.pay = document.getElementById('income-pay').value;
             } else {
-                entry.cat = document.getElementById('cat').value;
-                entry.pay = document.getElementById('pay').value;
+                newItem.from = document.getElementById('transfer-from').value;
+                newItem.to = document.getElementById('transfer-to').value;
             }
-            
-            if(id) data = data.map(i => i.id === id ? entry : i); else data.push(entry);
-            localStorage.setItem(KEY_DATA, JSON.stringify(data));
-            
-            if(targetDate) currentDisplayDate = new Date(targetDate);
-            
+
+            if(id) {
+                // 編集時
+                kakeiboData = kakeiboData.map(item => item.id === id ? newItem : item);
+            } else {
+                // 新規追加時
+                kakeiboData.push(newItem);
+            }
+
+            await saveToCloud();
             closeInputForm();
-            show('cal');
+            updateHomeView();
+        };
+
+        // 明細削除
+        async function deleteItem(id) {
+            if(!confirm("本当に削除しますか？")) return;
+            kakeiboData = kakeiboData.filter(item => item.id !== id);
+            await saveToCloud();
+            updateHomeView();
         }
 
-        function edit(id) {
-            show('cal');
-            
-            const item = JSON.parse(localStorage.getItem(KEY_DATA)).find(i => i.id === id);
+        // 明細編集モード移行
+        function editItem(id) {
+            const item = kakeiboData.find(i => i.id === id);
+            if(!item) return;
+
             document.getElementById('edit-id').value = item.id;
-            document.getElementById('date').value = item.start;
+            document.getElementById('date').value = item.date;
             document.getElementById('price').value = item.price;
-            document.getElementById('memo').value = item.memo || '';
-            
-            if(item.type === 'transfer') {
-                switchInputMode('transfer');
-                setTimeout(() => {
-                    document.getElementById('transfer-from').value = item.fromAccount;
-                    document.getElementById('transfer-to').value = item.toAccount;
-                }, 50);
+            document.getElementById('memo').value = item.memo;
+
+            switchInputMode(item.type);
+
+            if(item.type === 'expense') {
+                document.getElementById('cat').value = item.cat;
+                document.getElementById('pay').value = item.pay;
             } else if(item.type === 'income') {
-                switchInputMode('income');
-                setTimeout(() => {
-                    document.getElementById('income-cat').value = item.cat;
-                    document.getElementById('income-pay').value = item.pay;
-                }, 50);
+                document.getElementById('income-cat').value = item.cat;
+                document.getElementById('income-pay').value = item.pay;
             } else {
-                switchInputMode('expense');
-                setTimeout(() => {
-                    document.getElementById('cat').value = item.cat;
-                    document.getElementById('pay').value = item.pay;
-                }, 50);
+                document.getElementById('transfer-from').value = item.from;
+                document.getElementById('transfer-to').value = item.to;
             }
-            
+
             document.getElementById('inline-input-card').style.display = 'block';
             document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
         }
 
-        function deleteEntry(id) {
-            if(confirm('この項目を削除してもよろしいですか？')) {
-                let data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-                data = data.filter(item => item.id !== id);
-                localStorage.setItem(KEY_DATA, JSON.stringify(data));
-                updateHomeView();
-                if(document.getElementById('history-tab-page').classList.contains('active')) {
-                    renderAllSettingsLists();
-                }
+        // 本日の内訳の表示
+        function renderDailyHistory() {
+            if(!selectedDateStr) return;
+            const targetData = kakeiboData.filter(i => i.date === selectedDateStr);
+            const container = document.getElementById('daily-history-list');
+            
+            if(targetData.length === 0) {
+                container.innerHTML = `<div>${selectedDateStr} のデータはありません。</div>`;
+                return;
             }
-        }
-        
-        function updateCatSetting() {
-            const newVal = document.getElementById('new-cat').value;
-            const oldVal = document.getElementById('edit-cat-old').value;
-            if(!newVal) return;
-            let list = JSON.parse(localStorage.getItem('cats') || '["食費", "趣味"]');
-            if(oldVal) list = list.map(i => i === oldVal ? newVal : i); else list.push(newVal);
-            localStorage.setItem('cats', JSON.stringify(list));
-            document.getElementById('new-cat').value = '';
-            document.getElementById('edit-cat-old').value = '';
-            initUI();
-        }
-        function editCatSetting(val) { document.getElementById('new-cat').value = val; document.getElementById('edit-cat-old').value = val; }
-        function delCatSetting(val) { localStorage.setItem('cats', JSON.stringify(JSON.parse(localStorage.getItem('cats')).filter(i => i !== val))); initUI(); }
 
-        function updatePaySetting() {
-            const newName = document.getElementById('new-pay').value;
-            const newBalance = parseInt(document.getElementById('new-pay-balance').value || 0);
-            const oldName = document.getElementById('edit-pay-old').value;
-            if(!newName) return;
-            
-            let obj = getAccountData();
-            if (oldName) delete obj[oldName];
-            obj[newName] = newBalance;
-            
-            localStorage.setItem(KEY_PAYS_OBJ, JSON.stringify(obj));
-            document.getElementById('new-pay').value = '';
-            document.getElementById('new-pay-balance').value = '0';
-            document.getElementById('edit-pay-old').value = '';
-            initUI();
-            updateHomeView();
-        }
-        function editPaySettingField(name, balance) {
-            document.getElementById('new-pay').value = name;
-            document.getElementById('new-pay-balance').value = balance;
-            document.getElementById('edit-pay-old').value = name;
-        }
-        function delPaySetting(name) {
-            let obj = getAccountData();
-            delete obj[name];
-            localStorage.setItem(KEY_PAYS_OBJ, JSON.stringify(obj));
-            initUI();
-            updateHomeView();
+            container.innerHTML = targetData.map(item => {
+                let detail = "";
+                if(item.type === 'expense') detail = `[支出] ${item.cat} (${item.pay})`;
+                if(item.type === 'income') detail = `[収入] ${item.cat} (${item.pay})`;
+                if(item.type === 'transfer') detail = `[振替] ${item.from} ➔ ${item.to}`;
+
+                return `
+                    <div class="history-item">
+                        <div>
+                            <span style="font-weight:bold;">${parseInt(item.price).toLocaleString()}円</span><br>
+                            <small style="color:#666;">${detail} ${item.memo ? ' - ' + item.memo : ''}</small>
+                        </div>
+                        <div class="history-actions">
+                            <button class="btn-edit" data-id="${item.id}">編</button>
+                            <button class="btn-del" data-id="${item.id}">削</button>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            container.querySelectorAll('.btn-edit').forEach(b => b.onclick = () => editItem(b.getAttribute('data-id')));
+            container.querySelectorAll('.btn-del').forEach(b => b.onclick = () => deleteItem(b.getAttribute('data-id')));
         }
 
-        function exportCSV() {
-            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            const paysObj = getAccountData();
-            
-            let csv = '日付,タイプ,金額,カテゴリ/振替元,アカウント/振替先,メモ\n';
-            csv += `"__ACCOUNTS_DATA__","${JSON.stringify(paysObj).replace(/"/g, '""')}",0,"","",""\n`;
-            
-            data.forEach(i => { 
-                if(i.type === 'transfer') {
-                    csv += `"${i.start}","振替",${i.price},"${i.fromAccount}","${i.toAccount}","${i.memo || ''}"\n`;
-                } else if(i.type === 'income') {
-                    csv += `"${i.start}","収入",${i.price},"${i.cat}","${i.pay}","${i.memo || ''}"\n`;
-                } else {
-                    csv += `"${i.start}","支出",${i.price},"${i.cat}","${i.pay}","${i.memo || ''}"\n`;
+        // 集計・ダッシュボード表示計算
+        function renderDashboard() {
+            const year = currentDisplayDate.getFullYear();
+            const month = currentDisplayDate.getMonth();
+            const currentMonthStr = `${year}-${String(month+1).padStart(2,'0')}`;
+
+            // 資産計算用
+            const currentBalances = { ...accounts };
+
+            // カテゴリ別集計用
+            const catSums = {};
+            categories.forEach(c => catSums[c] = 0);
+
+            kakeiboData.sort((a,b) => a.date.localeCompare(b.date)).forEach(item => {
+                const isCurrentMonth = item.date.startsWith(currentMonthStr);
+                const price = parseInt(item.price);
+
+                if(item.type === 'expense') {
+                    if(currentBalances[item.pay] !== undefined) currentBalances[item.pay] -= price;
+                    if(isCurrentMonth) catSums[item.cat] = (catSums[item.cat] || 0) + price;
+                } else if(item.type === 'income') {
+                    if(currentBalances[item.pay] !== undefined) currentBalances[item.pay] += price;
+                } else if(item.type === 'transfer') {
+                    if(currentBalances[item.from] !== undefined) currentBalances[item.from] -= price;
+                    if(currentBalances[item.to] !== undefined) currentBalances[item.to] += price;
                 }
             });
-            document.getElementById('csv-output').value = csv;
-            alert('CSVデータを出力しました。エリア内の文字をすべてコピーして保存するか、別端末に共有してください。');
+
+            // 総資産表示
+            const totalAssets = Object.values(currentBalances).reduce((a, b) => a + b, 0);
+            document.getElementById('total-assets-amount').innerText = totalAssets.toLocaleString() + "円";
+
+            // 今月のカテゴリ別支出表示
+            document.getElementById('cat-sum').innerHTML = Object.keys(catSums).map(k => `
+                <div class="summary-item"><span>${k}</span><span>${catSums[k].toLocaleString()}円</span></div>`).join('');
+
+            // 口座残高表示
+            document.getElementById('pay-sum').innerHTML = Object.keys(currentBalances).map(k => `
+                <div class="summary-item"><span>${k}</span><span>${currentBalances[k].toLocaleString()}円</span></div>`).join('');
         }
 
-        function importCSV() {
-            const csvText = document.getElementById('csv-output').value.trim();
-            if(!csvText) { alert('テキストエリアにCSVデータを貼り付けてください。'); return; }
+        // タブ切り替え制御
+        window.show = (pageId) => {
+            document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(pageId + '-page').classList.add('active');
+            document.getElementById('btn-' + pageId).classList.add('active');
             
-            if(!confirm('CSVデータを読み込んで家計簿を上書き復元します。現在のデータは消去されますが、よろしいですか？')) return;
+            closeInputForm();
+            
+            if(pageId === 'history-tab') renderAllHistoryLists();
+            if(pageId === 'analytics') { buildYearSelect(); renderAnalytics(); }
+            if(pageId === 'cal') updateHomeView();
+        };
 
-            try {
-                const lines = csvText.split('\n');
-                if(lines.length < 2) { throw new Error('データが空、または正しくありません。'); }
-                
-                let importedData = [];
-                let importedPaysObj = null;
+        // 履歴タブ（全期間）の描画
+        function renderAllHistoryLists() {
+            const expenses = kakeiboData.filter(i => i.type === 'expense').sort((a,b)=>b.date.localeCompare(a.date));
+            const incomes = kakeiboData.filter(i => i.type === 'income').sort((a,b)=>b.date.localeCompare(a.date));
+            const transfers = kakeiboData.filter(i => i.type === 'transfer').sort((a,b)=>b.date.localeCompare(a.date));
 
-                for(let i = 1; i < lines.length; i++) {
-                    if(!lines[i].trim()) continue;
-                    
-                    const matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
-                    const row = matches.map(val => val.replace(/^"|"$/g, '').replace(/""/g, '"'));
-
-                    if(row.length < 5) continue;
-
-                    const dateVal = row[0];
-                    const typeVal = row[1];
-                    const priceVal = parseInt(row[2] || 0);
-                    const col4 = row[3];
-                    const col5 = row[4];
-                    const memoVal = row[5] || '';
-
-                    if(dateVal === '__ACCOUNTS_DATA__') {
-                        importedPaysObj = JSON.parse(typeVal);
-                        continue;
-                    }
-
-                    let entry = {
-                        id: (Date.now() + i).toString(),
-                        start: dateVal,
-                        price: priceVal.toString(),
-                        memo: memoVal
-                    };
-
-                    if(typeVal === '振替') {
-                        entry.type = 'transfer';
-                        entry.fromAccount = col4;
-                        entry.toAccount = col5;
-                    } else if(typeVal === '収入') {
-                        entry.type = 'income';
-                        entry.cat = col4;
-                        entry.pay = col5;
-                    } else if(typeVal === '支出') {
-                        entry.type = 'expense';
-                        entry.cat = col4;
-                        entry.pay = col5;
-                    } else {
-                        continue;
-                    }
-                    importedData.push(entry);
-                }
-
-                localStorage.setItem(KEY_DATA, JSON.stringify(importedData));
-                if(importedPaysObj) {
-                    localStorage.setItem(KEY_PAYS_OBJ, JSON.stringify(importedPaysObj));
-                }
-
-                currentDisplayDate = new Date();
-                initUI();
-                updateHomeView();
-                
-                document.getElementById('csv-output').value = '';
-                alert('データの復元が完了しました！');
-                show('cal');
-
-            } catch (e) {
-                alert('データの読み込みに失敗しました。CSVの形式が正しいか確認してください。\nエラー詳細: ' + e.message);
-            }
+            document.getElementById('all-expense-list').innerHTML = expenses.map(i => `
+                <div class="history-item"><div><small>${i.date}</small> <b>${i.cat}</b><br><small>${i.pay} ${i.memo?'('+i.memo+')':''}</small></div><span class="color-expense">-${parseInt(i.price).toLocaleString()}円</span></div>`).join('');
+            document.getElementById('all-income-list').innerHTML = incomes.map(i => `
+                <div class="history-item"><div><small>${i.date}</small> <b>${i.cat}</b><br><small>${i.pay} ${i.memo?'('+i.memo+')':''}</small></div><span class="color-income">+${parseInt(i.price).toLocaleString()}円</span></div>`).join('');
+            document.getElementById('all-transfer-list').innerHTML = transfers.map(i => `
+                <div class="history-item"><div><small>${i.date}</small> <b>${i.from} ➔ ${i.to}</b><br><small>${i.memo?i.memo:''}</small></div><span>${parseInt(i.price).toLocaleString()}円</span></div>`).join('');
         }
 
-        function resetAllData() {
-            if(confirm('登録された家計簿データをすべて削除します。よろしいですか？')) {
-                localStorage.removeItem(KEY_DATA);
-                localStorage.removeItem(KEY_PAYS_OBJ);
-                currentDisplayDate = new Date();
-                initUI();
-                updateHomeView();
+        // 分析タブ（年選択肢構築とレポート）
+        function buildYearSelect() {
+            const years = new Set([new Date().getFullYear()]);
+            kakeiboData.forEach(i => { if(i.date) years.add(parseInt(i.date.split('-')[0])); });
+            const sortedYears = Array.from(years).sort((a,b)=>b-a);
+            document.getElementById('analytics-year-select').innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+        }
+
+        window.renderAnalytics = () => {
+            const targetYear = document.getElementById('analytics-year-select').value;
+            if(!targetYear) return;
+
+            const monthlyData = Array.from({length: 12}, () => ({ income: 0, expense: 0 }));
+            const catRankSum = {};
+
+            kakeiboData.forEach(item => {
+                if(!item.date.startsWith(targetYear)) return;
+                const monthIdx = parseInt(item.date.split('-')[1]) - 1;
+                const price = parseInt(item.price);
+
+                if(item.type === 'expense') {
+                    monthlyData[monthIdx].expense += price;
+                    catRankSum[item.cat] = (catRankSum[item.cat] || 0) + price;
+                } else if(item.type === 'income') {
+                    monthlyData[monthIdx].income += price;
+                }
+            });
+
+            // 年間収支レポートの描画
+            let totalInc = 0, totalExp = 0;
+            let tbodyHtml = "";
+            for(let m=0; m<12; m++) {
+                const diff = monthlyData[m].income - monthlyData[m].expense;
+                totalInc += monthlyData[m].income;
+                totalExp += monthlyData[m].expense;
+                tbodyHtml += `<tr>
+                    <td>${m+1}月</td>
+                    <td>${monthlyData[m].income.toLocaleString()}円</td>
+                    <td class="color-expense">${monthlyData[m].expense.toLocaleString()}円</td>
+                    <span style="font-weight:bold;"><td style="color:${diff>=0?'var(--success)':'var(--danger)'}">${diff.toLocaleString()}円</td></span>
+                </tr>`;
             }
+            tbodyHtml += `<tr class="analytics-total-row">
+                <td>合計</td>
+                <td>${totalInc.toLocaleString()}円</td>
+                <td class="color-expense">${totalExp.toLocaleString()}円</td>
+                <td style="color:${(totalInc-totalExp)>=0?'var(--success)':'var(--danger)'}">${(totalInc-totalExp).toLocaleString()}円</td>
+            </tr>`;
+            document.getElementById('analytics-monthly-tbody').innerHTML = tbodyHtml;
+
+            // カテゴリ別ランキングの描画
+            const rankedCats = Object.keys(catRankSum).map(k => ({name: k, val: catRankSum[k]})).sort((a,b)=>b.val-a.val);
+            document.getElementById('analytics-cat-rank').innerHTML = rankedCats.map((c, idx) => `
+                <div class="summary-item">
+                    <span><span class="rank-badge rank-${idx+1}">${idx+1}</span>${c.name}</span>
+                    <span>${c.val.toLocaleString()}円</span>
+                </div>`).join('');
+        };
+
+        // 設定の追加・削除処理
+        window.addCatSetting = async () => {
+            const name = document.getElementById('new-cat').value.trim();
+            if(!name || categories.includes(name)) return;
+            categories.push(name);
+            document.getElementById('new-cat').value = "";
+            await saveToCloud();
+        };
+
+        async function delCatSetting(name) {
+            if(!confirm(`カテゴリ「${name}」を削除しますか？`)) return;
+            categories = categories.filter(c => c !== name);
+            await saveToCloud();
+        }
+
+        window.addPaySetting = async () => {
+            const name = document.getElementById('new-pay').value.trim();
+            const bal = parseInt(document.getElementById('new-pay-balance').value) || 0;
+            if(!name || accounts[name] !== undefined) return;
+            accounts[name] = bal;
+            document.getElementById('new-pay').value = "";
+            document.getElementById('new-pay-balance').value = "0";
+            await saveToCloud();
+        };
+
+        async function delPaySetting(name) {
+            if(!confirm(`アカウント「${name}」を削除しますか？`)) return;
+            delete accounts[name];
+            await saveToCloud();
         }
     </script>
 </body>
