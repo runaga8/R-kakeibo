@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>オフライン資産管理家計簿</title>
+    <title>R-KAKEIBO</title>
     <style>
         :root { --primary: #5c6bc0; --danger: #ef5350; --edit: #ffca28; --success: #4caf50; --bg: #f5f7fa; --text: #37474f; }
         body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; background: var(--bg); color: var(--text); }
@@ -55,7 +55,7 @@
         .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
         .setting-item .info { display: flex; flex-direction: column; }
         .setting-item .balance { font-size: 0.85em; color: #666; }
-        textarea { width: 100%; height: 80px; margin: 8px 0; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }
+        textarea { width: 100%; height: 100px; margin: 8px 0; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }
 
         /* 登録フォーム内のサブタブスタイル */
         .sub-tabs { display: flex; gap: 5px; margin-bottom: 15px; }
@@ -73,7 +73,7 @@
         .analytics-table th { text-align: center; background: #f0f4f8; font-weight: bold; }
         .analytics-table td:first-child { text-align: center; font-weight: bold; }
         
-        /* 【追加】合計行専用の背景スタイル */
+        /* 合計行専用の背景スタイル */
         .analytics-total-row { background-color: #eef2fa; font-weight: bold; border-bottom: 2px solid var(--primary) !important; }
 
         .rank-badge { display: inline-block; width: 20px; height: 20px; background: #bbb; color: white; text-align: center; line-height: 20px; border-radius: 50%; font-size: 0.8em; margin-right: 8px; }
@@ -216,10 +216,17 @@
             <button class="main-btn" onclick="updatePaySetting()">保存</button>
             <div id="pay-list"></div>
         </div>
+        
         <div class="card">
-            <h3>データ管理</h3>
-            <button class="main-btn" style="background:var(--success);" onclick="exportCSV()">CSVデータを出力する</button>
-            <textarea id="csv-output" readonly placeholder="ここにCSVデータが出力されます。"></textarea>
+            <h3>データ管理（バックアップ＆復元）</h3>
+            <p style="font-size: 0.8em; color: #666; margin-bottom: 10px;">現在のデータをCSV形式で出力、または他端末から書き出されたCSVデータを貼り付けて復元（インポート）できます。</p>
+            
+            <button class="main-btn" style="background:var(--success); margin-bottom: 8px;" onclick="exportCSV()">① データをCSVとして出力する</button>
+            <textarea id="csv-output" placeholder="ここにCSVデータが出力されます。インポートする際もここにCSVテキストを貼り付けてください。"></textarea>
+            
+            <button class="main-btn" style="background:var(--primary); margin-top: 5px;" onclick="importCSV()">② 上記のCSVからデータを復元する</button>
+            
+            <hr style="border: 0; border-top: 1px dashed #ddd; margin: 20px 0;">
             <button class="danger-btn" onclick="resetAllData()">データをすべて削除（初期化）</button>
         </div>
     </div>
@@ -421,7 +428,6 @@
             document.getElementById('total-assets-amount').innerText = `${totalAssets.toLocaleString()}円`;
             document.getElementById('pay-sum').innerHTML = Object.entries(accountBalances).map(([k,v]) => `<div class="summary-item">${k}<span>${v.toLocaleString()}円</span></div>`).join('');
             
-            // 今月の収入履歴
             const incomesData = filteredData.filter(i => i.type === 'income');
             let incomeHtml = `<h3>💰 ${month+1}月の収入履歴</h3>`;
             if(incomesData.length === 0) incomeHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">収入はありません</p>';
@@ -432,7 +438,6 @@
             }).join('');
             document.getElementById('income-history').innerHTML = incomeHtml;
 
-            // 今月の支出履歴
             const expensesData = filteredData.filter(i => i.type === 'expense');
             let expenseHtml = `<h3>📝 ${month+1}月の支出履歴</h3>`;
             if(expensesData.length === 0) expenseHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">支出はありません</p>';
@@ -443,7 +448,6 @@
             }).join('');
             document.getElementById('history').innerHTML = expenseHtml;
 
-            // 今月の振替履歴
             const transfersData = filteredData.filter(i => i.type === 'transfer');
             let transferHtml = `<h3>🔄 ${month+1}月の振替履歴</h3>`;
             if(transfersData.length === 0) transferHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">振替履歴はありません</p>';
@@ -520,11 +524,10 @@
             document.getElementById('all-transfer-list').innerHTML = trfHtml;
         }
 
-        /* 分析用の年セレクトボックス生成生成 */
         function buildYearSelect() {
             const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
             const years = new Set();
-            years.add(new Date().getFullYear()); // 今年は必ず入れる
+            years.add(new Date().getFullYear());
             data.forEach(i => { if(i.start) years.add(new Date(i.start).getFullYear()); });
             
             const sortedYears = Array.from(years).sort((a,b) => b - a);
@@ -534,19 +537,14 @@
             if(savedVal && sortedYears.includes(parseInt(savedVal))) { select.value = savedVal; }
         }
 
-        /* 分析メイン集計処理 */
         function renderAnalytics() {
             const targetYear = parseInt(document.getElementById('analytics-year-select').value || new Date().getFullYear());
             const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
             
-            // 1. 月別収支計算用
             const monthlyReport = Array.from({length: 12}, () => ({ income: 0, expense: 0 }));
-            // 2. カテゴリランキング用
             const catRankObj = {};
-            // 3. 口座別収支用
             const accountReportObj = {};
 
-            // 【新設】年間総合計用のカウンター
             let totalIncome = 0;
             let totalExpense = 0;
 
@@ -555,20 +553,19 @@
                 const d = new Date(item.start);
                 if(d.getFullYear() !== targetYear) return;
 
-                const monthIdx = d.getMonth(); // 0-11
+                const monthIdx = d.getMonth();
                 const price = parseInt(item.price || 0);
 
                 if(item.type === 'income') {
                     monthlyReport[monthIdx].income += price;
-                    totalIncome += price; // 年間合計に加算
+                    totalIncome += price;
                     if(item.pay) {
                         if(!accountReportObj[item.pay]) accountReportObj[item.pay] = { income:0, expense:0 };
                         accountReportObj[item.pay].income += price;
                     }
                 } else if(item.type === 'expense') {
                     monthlyReport[monthIdx].expense += price;
-                    totalExpense += price; // 年間合計に加算
-                    // カテゴリ集計
+                    totalExpense += price;
                     catRankObj[item.cat] = (catRankObj[item.cat] || 0) + price;
                     if(item.pay) {
                         if(!accountReportObj[item.pay]) accountReportObj[item.pay] = { income:0, expense:0 };
@@ -577,10 +574,7 @@
                 }
             });
 
-            // --- 描画1: 月別テーブル ---
             let tbodyHtml = '';
-            
-            // 【新設】まずは先頭に『合計』行を作成して追加
             const totalDiff = totalIncome - totalExpense;
             let totalDiffStyle = '';
             if(totalDiff > 0) totalDiffStyle = 'color:var(--success); font-weight:bold;';
@@ -594,7 +588,6 @@
                     <td style="${totalDiffStyle}">${totalDiff !== 0 ? (totalDiff > 0 ? '+' : '') + totalDiff.toLocaleString() + '円' : '0円'}</td>
                 </tr>`;
 
-            // その後に各月のデータを回す
             for(let m=0; m<12; m++) {
                 const inc = monthlyReport[m].income;
                 const exp = monthlyReport[m].expense;
@@ -613,7 +606,6 @@
             }
             document.getElementById('analytics-monthly-tbody').innerHTML = tbodyHtml;
 
-            // --- 描画2: カテゴリランキング ---
             const sortedCats = Object.entries(catRankObj).sort((a,b) => b[1] - a[1]);
             let rankHtml = '';
             if(sortedCats.length === 0) {
@@ -630,7 +622,6 @@
             }
             document.getElementById('analytics-cat-rank').innerHTML = rankHtml;
 
-            // --- 描画3: 口座別レポート ---
             let accHtml = '';
             const entries = Object.entries(accountReportObj);
             if(entries.length === 0) {
@@ -770,8 +761,11 @@
 
         function exportCSV() {
             const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
-            if(data.length === 0) { alert('データがありません'); return; }
+            const paysObj = getAccountData();
+            
             let csv = '日付,タイプ,金額,カテゴリ/振替元,アカウント/振替先,メモ\n';
+            csv += `"__ACCOUNTS_DATA__","${JSON.stringify(paysObj).replace(/"/g, '""')}",0,"","",""\n`;
+            
             data.forEach(i => { 
                 if(i.type === 'transfer') {
                     csv += `"${i.start}","振替",${i.price},"${i.fromAccount}","${i.toAccount}","${i.memo || ''}"\n`;
@@ -782,6 +776,83 @@
                 }
             });
             document.getElementById('csv-output').value = csv;
+            alert('CSVデータを出力しました。エリア内の文字をすべてコピーして保存するか、別端末に共有してください。');
+        }
+
+        function importCSV() {
+            const csvText = document.getElementById('csv-output').value.trim();
+            if(!csvText) { alert('テキストエリアにCSVデータを貼り付けてください。'); return; }
+            
+            if(!confirm('CSVデータを読み込んで家計簿を上書き復元します。現在のデータは消去されますが、よろしいですか？')) return;
+
+            try {
+                const lines = csvText.split('\n');
+                if(lines.length < 2) { throw new Error('データが空、または正しくありません。'); }
+                
+                let importedData = [];
+                let importedPaysObj = null;
+
+                for(let i = 1; i < lines.length; i++) {
+                    if(!lines[i].trim()) continue;
+                    
+                    const matches = lines[i].match(/(".*?"|[^",\s]+)(?=\s*,|\s*$)/g) || [];
+                    const row = matches.map(val => val.replace(/^"|"$/g, '').replace(/""/g, '"'));
+
+                    if(row.length < 5) continue;
+
+                    const dateVal = row[0];
+                    const typeVal = row[1];
+                    const priceVal = parseInt(row[2] || 0);
+                    const col4 = row[3];
+                    const col5 = row[4];
+                    const memoVal = row[5] || '';
+
+                    if(dateVal === '__ACCOUNTS_DATA__') {
+                        importedPaysObj = JSON.parse(typeVal);
+                        continue;
+                    }
+
+                    let entry = {
+                        id: (Date.now() + i).toString(),
+                        start: dateVal,
+                        price: priceVal.toString(),
+                        memo: memoVal
+                    };
+
+                    if(typeVal === '振替') {
+                        entry.type = 'transfer';
+                        entry.fromAccount = col4;
+                        entry.toAccount = col5;
+                    } else if(typeVal === '収入') {
+                        entry.type = 'income';
+                        entry.cat = col4;
+                        entry.pay = col5;
+                    } else if(typeVal === '支出') {
+                        entry.type = 'expense';
+                        entry.cat = col4;
+                        entry.pay = col5;
+                    } else {
+                        continue;
+                    }
+                    importedData.push(entry);
+                }
+
+                localStorage.setItem(KEY_DATA, JSON.stringify(importedData));
+                if(importedPaysObj) {
+                    localStorage.setItem(KEY_PAYS_OBJ, JSON.stringify(importedPaysObj));
+                }
+
+                currentDisplayDate = new Date();
+                initUI();
+                updateHomeView();
+                
+                document.getElementById('csv-output').value = '';
+                alert('データの復元が完了しました！');
+                show('cal');
+
+            } catch (e) {
+                alert('データの読み込みに失敗しました。CSVの形式が正しいか確認してください。\nエラー詳細: ' + e.message);
+            }
         }
 
         function resetAllData() {
