@@ -1,0 +1,798 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>オフライン資産管理家計簿</title>
+    <style>
+        :root { --primary: #5c6bc0; --danger: #ef5350; --edit: #ffca28; --success: #4caf50; --bg: #f5f7fa; --text: #37474f; }
+        body { font-family: sans-serif; padding: 20px; max-width: 600px; margin: auto; background: var(--bg); color: var(--text); }
+        .card { background: white; padding: 20px; border-radius: 16px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); margin-bottom: 20px; }
+        
+        /* 総資産表示スタイル */
+        .total-assets { text-align: center; background: linear-gradient(135deg, #7986cb, #5c6bc0); color: white; padding: 20px; border-radius: 16px; margin-bottom: 20px; }
+        .total-assets h2 { margin: 0; font-size: 1em; opacity: 0.9; font-weight: normal; }
+        .total-assets .amount { font-size: 2em; font-weight: bold; margin-top: 5px; display: block; }
+
+        /* カレンダーヘッダーと切り替えボタン */
+        .calendar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .calendar-header h3 { margin: 0; font-size: 1.2em; }
+        .cal-nav-btn { background: #e8eaf6; color: var(--primary); border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 0.9em; }
+        .cal-nav-btn:hover { background: var(--primary); color: white; }
+
+        /* カレンダー自作スタイル */
+        table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        th { text-align: center; padding: 10px; font-size: 0.8em; }
+        td { height: 75px; border: 1px solid #eee; text-align: center; vertical-align: top; font-size: 0.9em; cursor: pointer; padding: 4px 2px; box-sizing: border-box; }
+        td:hover { background: #e8eaf6; }
+        .day-num { font-weight: bold; display: block; margin-bottom: 2px; }
+        
+        /* カレンダー内の金額表示スタイル */
+        .day-price { font-size: 0.7em; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.2; }
+        .color-expense { color: var(--danger); } 
+        .color-income { color: var(--success); font-weight: bold; }  
+
+        /* 今日の日付を目立たせるスタイル */
+        td.calendar-td-today { background-color: #e8eaf6; border: 2px solid var(--primary); }
+        td.calendar-td-today .day-num { color: var(--primary); position: relative; }
+
+        /* ナビゲーションバー */
+        nav { display: flex; gap: 6px; margin-bottom: 20px; }
+        nav button { flex: 1; padding: 12px 2px; border: none; border-radius: 12px; background: #e8eaf6; color: var(--primary); font-weight: bold; cursor: pointer; font-size: 0.85em; }
+        nav button.active { background: var(--primary); color: white; }
+        .page { display: none; }
+        .page.active { display: block; }
+        
+        .summary-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        .summary-item { font-size: 0.9em; border-bottom: 1px solid #eee; padding: 5px 0; display: flex; justify-content: space-between; }
+        .history-item { display: flex; align-items: center; justify-content: space-between; padding: 12px; border-bottom: 1px solid #f0f0f0; }
+        .history-actions { display: flex; gap: 5px; }
+        .btn-edit { background: var(--edit); border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.8em; font-weight: bold; }
+        .btn-del { background: var(--danger); color: white; border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-size: 0.8em; font-weight: bold; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; }
+        button.main-btn { background: var(--primary); color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; cursor: pointer; font-weight: bold; }
+        button.danger-btn { background: var(--danger); color: white; border: none; padding: 12px; border-radius: 8px; width: 100%; cursor: pointer; font-weight: bold; margin-top: 10px; }
+        .setting-item { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #eee; }
+        .setting-item .info { display: flex; flex-direction: column; }
+        .setting-item .balance { font-size: 0.85em; color: #666; }
+        textarea { width: 100%; height: 80px; margin: 8px 0; padding: 10px; border: 1px solid #ddd; border-radius: 8px; box-sizing: border-box; font-family: monospace; font-size: 0.8em; }
+
+        /* 登録フォーム内のサブタブスタイル */
+        .sub-tabs { display: flex; gap: 5px; margin-bottom: 15px; }
+        .sub-tabs button { flex: 1; padding: 8px 4px; border: 1px solid var(--primary); border-radius: 8px; background: white; color: var(--primary); cursor: pointer; font-weight: bold; font-size: 0.85em; }
+        .sub-tabs button.active { background: var(--primary); color: white; }
+        .input-sub-page { display: none; }
+        .input-sub-page.active { display: block; }
+
+        /* 全期間履歴用のスクロール領域設定 */
+        .scroll-list { max-height: 300px; overflow-y: auto; border: 1px solid #eee; border-radius: 8px; background: #fafafa; padding: 5px; }
+
+        /* 分析タブ用のテーブル＆リストスタイル */
+        .analytics-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.85em; }
+        .analytics-table th, .analytics-table td { padding: 8px; border-bottom: 1px solid #eee; text-align: right; }
+        .analytics-table th { text-align: center; background: #f0f4f8; font-weight: bold; }
+        .analytics-table td:first-child { text-align: center; font-weight: bold; }
+        
+        /* 【追加】合計行専用の背景スタイル */
+        .analytics-total-row { background-color: #eef2fa; font-weight: bold; border-bottom: 2px solid var(--primary) !important; }
+
+        .rank-badge { display: inline-block; width: 20px; height: 20px; background: #bbb; color: white; text-align: center; line-height: 20px; border-radius: 50%; font-size: 0.8em; margin-right: 8px; }
+        .rank-1 { background: #ffd700; color: #333; font-weight: bold; }
+        .rank-2 { background: #c0c0c0; color: #333; font-weight: bold; }
+        .rank-3 { background: #cd7f32; color: white; }
+    </style>
+</head>
+<body>
+
+    <div class="total-assets">
+        <h2>💰 <span id="assets-title">現在</span>の総資産</h2>
+        <span class="amount" id="total-assets-amount">0円</span>
+    </div>
+
+    <nav>
+        <button onclick="show('cal')" id="btn-cal" class="active">ホーム</button>
+        <button onclick="show('history-tab')" id="btn-history-tab">履歴</button>
+        <button onclick="show('analytics')" id="btn-analytics">📊 分析</button>
+        <button onclick="show('settings')" id="btn-settings">設定</button>
+    </nav>
+
+    <div id="cal-page" class="page active">
+        <div class="card" id="calendar-area"></div>
+
+        <div id="inline-input-card" class="card" style="display: none; border: 2px solid var(--primary);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <h2 id="form-title" style="margin:0; font-size:1.2em;">項目登録</h2>
+                <button onclick="closeInputForm()" style="background:none; border:none; font-size:1.5em; cursor:pointer; color:#999;">&times;</button>
+            </div>
+            <div class="sub-tabs">
+                <button id="tab-expense" class="active" onclick="switchInputMode('expense')">支出</button>
+                <button id="tab-income" onclick="switchInputMode('income')">収入</button>
+                <button id="tab-transfer" onclick="switchInputMode('transfer')">残高振替</button>
+            </div>
+            
+            <input type="hidden" id="edit-id">
+            <input type="date" id="date">
+            <input type="number" inputmode="numeric" id="price" placeholder="金額">
+            <input type="text" id="memo" placeholder="メモ">
+            
+            <div id="form-expense-group" class="input-sub-page active">
+                <label style="font-size:0.85em; color:#555;">カテゴリ</label>
+                <select id="cat"></select>
+                <label style="font-size:0.85em; color:#555;">支払うアカウント</label>
+                <select id="pay"></select>
+            </div>
+
+            <div id="form-income-group" class="input-sub-page">
+                <label style="font-size:0.85em; color:#555;">収入カテゴリ</label>
+                <select id="income-cat">
+                    <option value="給与">給与</option>
+                    <option value="ボーナス">ボーナス</option>
+                    <option value="副収入">副収入</option>
+                    <option value="その他収入">その他収入</option>
+                </select>
+                <label style="font-size:0.85em; color:#555;">入るアカウント</label>
+                <select id="income-pay"></select>
+            </div>
+
+            <div id="form-transfer-group" class="input-sub-page">
+                <label style="font-size:0.85em; color:#555;">振替元（出す口座）</label>
+                <select id="transfer-from"></select>
+                <label style="font-size:0.85em; color:#555;">振替先（入れる口座）</label>
+                <select id="transfer-to"></select>
+            </div>
+
+            <button class="main-btn" style="margin-top:15px;" onclick="save()">保存</button>
+        </div>
+
+        <div class="card">
+            <h3 id="summary-title">📊 今月の集計</h3>
+            <div class="summary-grid">
+                <div><h4>カテゴリ別支出</h4><div id="cat-sum"></div></div>
+                <div><h4><span class="current-month-label"></span>末日時点の残高</h4><div id="pay-sum"></div></div>
+            </div>
+        </div>
+        <div class="card" id="income-history"></div>
+        <div class="card" id="history"></div>
+        <div class="card" id="transfer-history"></div>
+    </div>
+
+    <div id="history-tab-page" class="page">
+        <div class="card">
+            <h3>📝 全期間の支出履歴</h3>
+            <div class="scroll-list" id="all-expense-list"></div>
+        </div>
+        <div class="card">
+            <h3>💰 全期間の収入履歴</h3>
+            <div class="scroll-list" id="all-income-list"></div>
+        </div>
+        <div class="card">
+            <h3>🔄 全期間の振替履歴</h3>
+            <div class="scroll-list" id="all-transfer-list"></div>
+        </div>
+    </div>
+
+    <div id="analytics-page" class="page">
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h3>📅 年間収支レポート</h3>
+                <select id="analytics-year-select" onchange="renderAnalytics()" style="width: auto; padding: 6px; margin: 0;"></select>
+            </div>
+            <table class="analytics-table">
+                <thead>
+                    <tr>
+                        <th>月</th>
+                        <th>収入</th>
+                        <th>支出</th>
+                        <th>収支差</th>
+                    </tr>
+                </thead>
+                <tbody id="analytics-monthly-tbody"></tbody>
+            </table>
+        </div>
+
+        <div class="card">
+            <h3>🏆 年間カテゴリ別支出ランキング</h3>
+            <div id="analytics-cat-rank"></div>
+        </div>
+
+        <div class="card">
+            <h3>🏦 アカウント別 年間収支推移</h3>
+            <div id="analytics-account-report"></div>
+        </div>
+    </div>
+
+    <div id="settings-page" class="page">
+        <div class="card">
+            <h3>カテゴリ管理（支出）</h3>
+            <input type="hidden" id="edit-cat-old"><input type="text" id="new-cat" placeholder="カテゴリ名">
+            <button class="main-btn" onclick="updateCatSetting()">保存</button>
+            <div id="cat-list"></div>
+        </div>
+        <div class="card">
+            <h3>アカウント管理（初期残高設定）</h3>
+            <input type="hidden" id="edit-pay-old">
+            <input type="text" id="new-pay" placeholder="アカウント名 (例: 現金、クレカ)">
+            <input type="number" inputmode="numeric" id="new-pay-balance" placeholder="初期残高設定（円）" value="0">
+            <button class="main-btn" onclick="updatePaySetting()">保存</button>
+            <div id="pay-list"></div>
+        </div>
+        <div class="card">
+            <h3>データ管理</h3>
+            <button class="main-btn" style="background:var(--success);" onclick="exportCSV()">CSVデータを出力する</button>
+            <textarea id="csv-output" readonly placeholder="ここにCSVデータが出力されます。"></textarea>
+            <button class="danger-btn" onclick="resetAllData()">データをすべて削除（初期化）</button>
+        </div>
+    </div>
+
+    <script>
+        const KEY_DATA = 'kakeibo_data', KEY_CATS = 'cats', KEY_PAYS_OBJ = 'pays_obj';
+        
+        let currentDisplayDate = new Date();
+        let currentInputMode = 'expense';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initUI();
+            updateHomeView();
+        });
+
+        function show(p) {
+            document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('nav button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(p + '-page').classList.add('active');
+            document.getElementById('btn-' + p).classList.add('active');
+            
+            closeInputForm();
+            
+            if(p === 'history-tab') renderAllSettingsLists();
+            if(p === 'analytics') { buildYearSelect(); renderAnalytics(); }
+            if(p === 'cal') updateHomeView();
+        }
+
+        function closeInputForm() {
+            document.getElementById('inline-input-card').style.display = 'none';
+        }
+
+        function switchInputMode(mode) {
+            currentInputMode = mode;
+            document.getElementById('tab-expense').classList.toggle('active', mode === 'expense');
+            document.getElementById('tab-income').classList.toggle('active', mode === 'income');
+            document.getElementById('tab-transfer').classList.toggle('active', mode === 'transfer');
+            
+            document.getElementById('form-expense-group').classList.toggle('active', mode === 'expense');
+            document.getElementById('form-income-group').classList.toggle('active', mode === 'income');
+            document.getElementById('form-transfer-group').classList.toggle('active', mode === 'transfer');
+            
+            const isEdit = document.getElementById('edit-id').value !== '';
+            if(mode === 'expense') {
+                document.getElementById('form-title').innerText = isEdit ? '支出の編集' : '支出の登録';
+            } else if(mode === 'income') {
+                document.getElementById('form-title').innerText = isEdit ? '収入の編集' : '収入の登録';
+            } else {
+                document.getElementById('form-title').innerText = isEdit ? '振替の編集' : '残高振替';
+            }
+        }
+
+        function updateHomeView() {
+            renderCalendar();
+            renderDashboard();
+        }
+
+        function changeMonth(offset) {
+            currentDisplayDate.setMonth(currentDisplayDate.getMonth() + offset);
+            updateHomeView();
+            closeInputForm();
+        }
+
+        function renderCalendar() {
+            const year = currentDisplayDate.getFullYear();
+            const month = currentDisplayDate.getMonth();
+            const firstDay = new Date(year, month, 1).getDay();
+            const lastDate = new Date(year, month + 1, 0).getDate();
+            
+            const todayObj = new Date();
+            const todayStr = `${todayObj.getFullYear()}-${String(todayObj.getMonth()+1).padStart(2,'0')}-${String(todayObj.getDate()).padStart(2,'0')}`;
+            
+            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            
+            const dailyExpenseSum = {};
+            const dailyIncomeSum = {};
+            
+            data.forEach(item => {
+                if(item.start) {
+                    if(item.type === 'expense') {
+                        dailyExpenseSum[item.start] = (dailyExpenseSum[item.start] || 0) + parseInt(item.price || 0);
+                    } else if(item.type === 'income') {
+                        dailyIncomeSum[item.start] = (dailyIncomeSum[item.start] || 0) + parseInt(item.price || 0);
+                    }
+                }
+            });
+            
+            let html = `
+                <div class="calendar-header">
+                    <button class="cal-nav-btn" onclick="changeMonth(-1)">◀ 前月</button>
+                    <h3>${year}年 ${month+1}月</h3>
+                    <button class="cal-nav-btn" onclick="changeMonth(1)">次月 ▶</button>
+                </div>
+                <table><tr><th>日</th><th>月</th><th>火</th><th>水</th><th>木</th><th>金</th><th>土</th></tr><tr>`;
+                
+            for(let i=0; i<firstDay; i++) html += '<td></td>';
+            for(let d=1; d<=lastDate; d++) {
+                if((firstDay + d - 1) % 7 === 0 && d !== 1) html += '</tr><tr>';
+                const dateStr = `${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                
+                let priceHtml = '';
+                if(dailyExpenseSum[dateStr]) {
+                    priceHtml += `<span class="day-price color-expense">-${dailyExpenseSum[dateStr].toLocaleString()}円</span>`;
+                }
+                if(dailyIncomeSum[dateStr]) {
+                    priceHtml += `<span class="day-price color-income">+${dailyIncomeSum[dateStr].toLocaleString()}円</span>`;
+                }
+                
+                const isToday = (dateStr === todayStr) ? ' class="calendar-td-today"' : '';
+                
+                html += `<td${isToday} onclick="openInputFormForDate('${dateStr}')">
+                            <span class="day-num">${d}</span>
+                            ${priceHtml}
+                         </td>`;
+            }
+            html += '</tr></table>';
+            document.getElementById('calendar-area').innerHTML = html;
+        }
+
+        function openInputFormForDate(dateStr) {
+            document.getElementById('edit-id').value = '';
+            document.getElementById('date').value = dateStr;
+            document.getElementById('price').value = '';
+            document.getElementById('memo').value = '';
+            switchInputMode('expense');
+            document.getElementById('inline-input-card').style.display = 'block';
+            document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function getAccountData() {
+            const raw = localStorage.getItem(KEY_PAYS_OBJ);
+            if (!raw) return {"現金": 10000, "銀行": 200000};
+            try { return JSON.parse(raw); } catch(e) { return {"現金": 10000, "銀行": 200000}; }
+        }
+
+        function initUI() {
+            const cats = JSON.parse(localStorage.getItem('cats') || '["食費", "趣味"]');
+            const paysObj = getAccountData();
+
+            document.getElementById('cat').innerHTML = cats.map(i => `<option value="${i}">${i}</option>`).join('');
+            document.getElementById('cat-list').innerHTML = cats.map(i => `
+                <div class="setting-item">${i} <div>
+                <button class="btn-edit" onclick="editCatSetting('${i}')">編</button>
+                <button class="btn-del" onclick="delCatSetting('${i}')">削</button></div></div>`).join('');
+
+            const accountsHtml = Object.keys(paysObj).map(i => `<option value="${i}">${i}</option>`).join('');
+            document.getElementById('pay').innerHTML = accountsHtml;
+            document.getElementById('income-pay').innerHTML = accountsHtml;
+            document.getElementById('transfer-from').innerHTML = accountsHtml;
+            document.getElementById('transfer-to').innerHTML = accountsHtml;
+
+            document.getElementById('pay-list').innerHTML = Object.entries(paysObj).map(([name, val]) => `
+                <div class="setting-item">
+                    <div class="info"><span class="name">${name}</span><span class="balance">開始設定残高: ${val}円</span></div>
+                    <div>
+                    <button class="btn-edit" onclick="editPaySettingField('${name}', ${val})">編</button>
+                    <button class="btn-del" onclick="delPaySetting('${name}')">削</button></div>
+                </div>`).join('');
+        }
+
+        function renderDashboard() {
+            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            const year = currentDisplayDate.getFullYear();
+            const month = currentDisplayDate.getMonth();
+            
+            const targetMonthStr = `${year}-${String(month+1).padStart(2,'0')}`;
+            const filteredData = data.filter(item => item.start && item.start.startsWith(targetMonthStr));
+
+            document.getElementById('summary-title').innerText = `📊 ${month+1}月の集計`;
+            document.querySelectorAll('.current-month-label').forEach(el => el.innerText = `${month+1}月`);
+            document.getElementById('assets-title').innerText = `${month+1}月末時点`;
+
+            const cats={};
+            filteredData.forEach(i => { 
+                if(i.type === 'expense') cats[i.cat] = (cats[i.cat] || 0) + parseInt(i.price || 0); 
+            });
+            document.getElementById('cat-sum').innerHTML = Object.entries(cats).map(([k,v]) => `<div class="summary-item">${k}<span>${v}円</span></div>`).join('');
+            
+            const accountBalances = getAccountData();
+            const displayMonthLastDay = new Date(year, month + 1, 0);
+
+            data.forEach(i => {
+                if(!i.start) return;
+                const entryDate = new Date(i.start);
+                if (entryDate > displayMonthLastDay) return;
+
+                if(i.type === 'transfer') {
+                    if (accountBalances[i.fromAccount] !== undefined) accountBalances[i.fromAccount] -= parseInt(i.price || 0);
+                    if (accountBalances[i.toAccount] !== undefined) accountBalances[i.toAccount] += parseInt(i.price || 0);
+                } else if(i.type === 'income') {
+                    if (accountBalances[i.pay] !== undefined) accountBalances[i.pay] += parseInt(i.price || 0);
+                } else {
+                    if (accountBalances[i.pay] !== undefined) accountBalances[i.pay] -= parseInt(i.price || 0);
+                }
+            });
+
+            let totalAssets = 0;
+            Object.values(accountBalances).forEach(b => totalAssets += b);
+            document.getElementById('total-assets-amount').innerText = `${totalAssets.toLocaleString()}円`;
+            document.getElementById('pay-sum').innerHTML = Object.entries(accountBalances).map(([k,v]) => `<div class="summary-item">${k}<span>${v.toLocaleString()}円</span></div>`).join('');
+            
+            // 今月の収入履歴
+            const incomesData = filteredData.filter(i => i.type === 'income');
+            let incomeHtml = `<h3>💰 ${month+1}月の収入履歴</h3>`;
+            if(incomesData.length === 0) incomeHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">収入はありません</p>';
+            incomeHtml += incomesData.map(i => {
+                let txt = `<strong>${i.start}</strong> [${i.cat}] <span style="color:var(--success); font-weight:bold;">+${parseInt(i.price).toLocaleString()}円</span> <small style="color:#888;">(${i.pay})</small>`;
+                if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
+                return `<div class="history-item" style="border-left: 4px solid var(--success); padding-left: 8px;"><div>${txt}</div><div class="history-actions"><button class="btn-edit" onclick="edit('${i.id}')">編集</button><button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button></div></div>`;
+            }).join('');
+            document.getElementById('income-history').innerHTML = incomeHtml;
+
+            // 今月の支出履歴
+            const expensesData = filteredData.filter(i => i.type === 'expense');
+            let expenseHtml = `<h3>📝 ${month+1}月の支出履歴</h3>`;
+            if(expensesData.length === 0) expenseHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">支出はありません</p>';
+            expenseHtml += expensesData.map(i => {
+                let txt = `<strong>${i.start}</strong> ${i.cat} ${parseInt(i.price).toLocaleString()}円 <small style="color:#888;">(${i.pay})</small>`;
+                if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
+                return `<div class="history-item"><div>${txt}</div><div class="history-actions"><button class="btn-edit" onclick="edit('${i.id}')">編集</button><button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button></div></div>`;
+            }).join('');
+            document.getElementById('history').innerHTML = expenseHtml;
+
+            // 今月の振替履歴
+            const transfersData = filteredData.filter(i => i.type === 'transfer');
+            let transferHtml = `<h3>🔄 ${month+1}月の振替履歴</h3>`;
+            if(transfersData.length === 0) transferHtml += '<p style="color:#888;font-size:0.9em;padding:10px;">振替履歴はありません</p>';
+            transferHtml += transfersData.map(i => {
+                let txt = `<strong>${i.start}</strong> ${i.fromAccount} ➔ ${i.toAccount} : ${parseInt(i.price).toLocaleString()}円`;
+                if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
+                return `<div class="history-item" style="border-left: 4px solid var(--primary); padding-left: 8px;"><div>${txt}</div><div class="history-actions"><button class="btn-edit" onclick="edit('${i.id}')">編集</button><button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button></div></div>`;
+            }).join('');
+            document.getElementById('transfer-history').innerHTML = transferHtml;
+        }
+
+        function renderAllSettingsLists() {
+            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            const sortedData = [...data].sort((a,b) => new Date(b.start) - new Date(a.start));
+
+            const allExpenses = sortedData.filter(i => i.type === 'expense');
+            let expHtml = '';
+            if(allExpenses.length === 0) {
+                expHtml = '<p style="color:#888; font-size:0.9em; padding:10px; text-align:center;">支出データがありません</p>';
+            } else {
+                expHtml = allExpenses.map(i => {
+                    let txt = `<strong>${i.start}</strong> ${i.cat} <span style="color:var(--danger); font-weight:bold;">${parseInt(i.price).toLocaleString()}円</span> <small style="color:#888;">(${i.pay})</small>`;
+                    if(i.memo) txt += `<br><span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
+                    return `
+                    <div class="history-item" style="padding:8px 5px; margin-bottom:5px; background:white;">
+                        <div style="font-size:0.9em; line-height:1.4;">${txt}</div>
+                        <div class="history-actions">
+                            <button class="btn-edit" onclick="edit('${i.id}')">編集</button>
+                            <button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+            document.getElementById('all-expense-list').innerHTML = expHtml;
+
+            const allIncomes = sortedData.filter(i => i.type === 'income');
+            let incHtml = '';
+            if(allIncomes.length === 0) {
+                incHtml = '<p style="color:#888; font-size:0.9em; padding:10px; text-align:center;">収入データがありません</p>';
+            } else {
+                incHtml = allIncomes.map(i => {
+                    let txt = `<strong>${i.start}</strong> [${i.cat}] <span style="color:var(--success); font-weight:bold;">+${parseInt(i.price).toLocaleString()}円</span> <small style="color:#888;">(${i.pay})</small>`;
+                    if(i.memo) txt += `<br><span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px;">${i.memo}</span>`;
+                    return `
+                    <div class="history-item" style="border-left: 4px solid var(--success); padding:8px 5px; margin-bottom:5px; background:white;">
+                        <div style="font-size:0.9em; line-height:1.4;">${txt}</div>
+                        <div class="history-actions">
+                            <button class="btn-edit" onclick="edit('${i.id}')">編集</button>
+                            <button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+            document.getElementById('all-income-list').innerHTML = incHtml;
+
+            const allTransfers = sortedData.filter(i => i.type === 'transfer');
+            let trfHtml = '';
+            if(allTransfers.length === 0) {
+                trfHtml = '<p style="color:#888; font-size:0.9em; padding:10px; text-align:center;">振替データがありません</p>';
+            } else {
+                trfHtml = allTransfers.map(i => {
+                    let txt = `<strong>${i.start}</strong> ${i.fromAccount} ➔ ${i.toAccount}<br><span style="color:var(--primary); font-weight:bold;">${parseInt(i.price).toLocaleString()}円</span>`;
+                    if(i.memo) txt += ` <span style="font-size:0.8em; color:#666; background:#eee; padding:2px 6px; border-radius:4px; margin-left:5px;">${i.memo}</span>`;
+                    return `
+                    <div class="history-item" style="border-left: 4px solid var(--primary); padding:8px 5px; margin-bottom:5px; background:white;">
+                        <div style="font-size:0.9em; line-height:1.4;">${txt}</div>
+                        <div class="history-actions">
+                            <button class="btn-edit" onclick="edit('${i.id}')">編集</button>
+                            <button class="btn-del" onclick="deleteEntry('${i.id}')">削除</button>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+            document.getElementById('all-transfer-list').innerHTML = trfHtml;
+        }
+
+        /* 分析用の年セレクトボックス生成生成 */
+        function buildYearSelect() {
+            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            const years = new Set();
+            years.add(new Date().getFullYear()); // 今年は必ず入れる
+            data.forEach(i => { if(i.start) years.add(new Date(i.start).getFullYear()); });
+            
+            const sortedYears = Array.from(years).sort((a,b) => b - a);
+            const select = document.getElementById('analytics-year-select');
+            const savedVal = select.value;
+            select.innerHTML = sortedYears.map(y => `<option value="${y}">${y}年</option>`).join('');
+            if(savedVal && sortedYears.includes(parseInt(savedVal))) { select.value = savedVal; }
+        }
+
+        /* 分析メイン集計処理 */
+        function renderAnalytics() {
+            const targetYear = parseInt(document.getElementById('analytics-year-select').value || new Date().getFullYear());
+            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            
+            // 1. 月別収支計算用
+            const monthlyReport = Array.from({length: 12}, () => ({ income: 0, expense: 0 }));
+            // 2. カテゴリランキング用
+            const catRankObj = {};
+            // 3. 口座別収支用
+            const accountReportObj = {};
+
+            // 【新設】年間総合計用のカウンター
+            let totalIncome = 0;
+            let totalExpense = 0;
+
+            data.forEach(item => {
+                if(!item.start) return;
+                const d = new Date(item.start);
+                if(d.getFullYear() !== targetYear) return;
+
+                const monthIdx = d.getMonth(); // 0-11
+                const price = parseInt(item.price || 0);
+
+                if(item.type === 'income') {
+                    monthlyReport[monthIdx].income += price;
+                    totalIncome += price; // 年間合計に加算
+                    if(item.pay) {
+                        if(!accountReportObj[item.pay]) accountReportObj[item.pay] = { income:0, expense:0 };
+                        accountReportObj[item.pay].income += price;
+                    }
+                } else if(item.type === 'expense') {
+                    monthlyReport[monthIdx].expense += price;
+                    totalExpense += price; // 年間合計に加算
+                    // カテゴリ集計
+                    catRankObj[item.cat] = (catRankObj[item.cat] || 0) + price;
+                    if(item.pay) {
+                        if(!accountReportObj[item.pay]) accountReportObj[item.pay] = { income:0, expense:0 };
+                        accountReportObj[item.pay].expense += price;
+                    }
+                }
+            });
+
+            // --- 描画1: 月別テーブル ---
+            let tbodyHtml = '';
+            
+            // 【新設】まずは先頭に『合計』行を作成して追加
+            const totalDiff = totalIncome - totalExpense;
+            let totalDiffStyle = '';
+            if(totalDiff > 0) totalDiffStyle = 'color:var(--success); font-weight:bold;';
+            if(totalDiff < 0) totalDiffStyle = 'color:var(--danger);';
+            
+            tbodyHtml += `
+                <tr class="analytics-total-row">
+                    <td>合計</td>
+                    <td style="color:var(--success);">${totalIncome > 0 ? totalIncome.toLocaleString() + '円' : '0円'}</td>
+                    <td style="color:var(--danger);">${totalExpense > 0 ? totalExpense.toLocaleString() + '円' : '0円'}</td>
+                    <td style="${totalDiffStyle}">${totalDiff !== 0 ? (totalDiff > 0 ? '+' : '') + totalDiff.toLocaleString() + '円' : '0円'}</td>
+                </tr>`;
+
+            // その後に各月のデータを回す
+            for(let m=0; m<12; m++) {
+                const inc = monthlyReport[m].income;
+                const exp = monthlyReport[m].expense;
+                const diff = inc - exp;
+                let diffStyle = '';
+                if(diff > 0) diffStyle = 'color:var(--success); font-weight:bold;';
+                if(diff < 0) diffStyle = 'color:var(--danger);';
+
+                tbodyHtml += `
+                    <tr>
+                        <td>${m+1}月</td>
+                        <td style="color:var(--success);">${inc > 0 ? inc.toLocaleString() + '円' : '-'}</td>
+                        <td style="color:var(--danger);">${exp > 0 ? exp.toLocaleString() + '円' : '-'}</td>
+                        <td style="${diffStyle}">${diff !== 0 ? (diff > 0 ? '+' : '') + diff.toLocaleString() + '円' : '0円'}</td>
+                    </tr>`;
+            }
+            document.getElementById('analytics-monthly-tbody').innerHTML = tbodyHtml;
+
+            // --- 描画2: カテゴリランキング ---
+            const sortedCats = Object.entries(catRankObj).sort((a,b) => b[1] - a[1]);
+            let rankHtml = '';
+            if(sortedCats.length === 0) {
+                rankHtml = '<p style="color:#888; font-size:0.9em; padding:10px;">支出データがありません</p>';
+            } else {
+                rankHtml = sortedCats.map(([cat, val], idx) => {
+                    const r = idx + 1;
+                    const badgeClass = r <= 3 ? `rank-badge rank-${r}` : 'rank-badge';
+                    return `<div class="summary-item">
+                        <div><span class="${badgeClass}">${r}</span>${cat}</div>
+                        <span>${val.toLocaleString()}円</span>
+                    </div>`;
+                }).join('');
+            }
+            document.getElementById('analytics-cat-rank').innerHTML = rankHtml;
+
+            // --- 描画3: 口座別レポート ---
+            let accHtml = '';
+            const entries = Object.entries(accountReportObj);
+            if(entries.length === 0) {
+                accHtml = '<p style="color:#888; font-size:0.9em; padding:10px;">データがありません</p>';
+            } else {
+                accHtml = entries.map(([acc, val]) => {
+                    return `<div style="border-bottom:1px solid #eee; padding:10px 0; font-size:0.9em;">
+                        <strong>🏦 ${acc}</strong>
+                        <div style="display:flex; justify-content:space-between; margin-top:4px; color:#666; font-size:0.85em;">
+                            <span>収入合計: <span style="color:var(--success);">+${val.income.toLocaleString()}円</span></span>
+                            <span>支出合計: <span style="color:var(--danger);">${val.expense.toLocaleString()}円</span></span>
+                        </div>
+                    </div>`;
+                }).join('');
+            }
+            document.getElementById('analytics-account-report').innerHTML = accHtml;
+        }
+
+        function save() {
+            let data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            const id = document.getElementById('edit-id').value;
+            const targetDate = document.getElementById('date').value;
+            const price = document.getElementById('price').value;
+            const memo = document.getElementById('memo').value;
+            
+            let entry = { id: id || Date.now().toString(), start: targetDate, price: price, memo: memo, type: currentInputMode };
+            
+            if(currentInputMode === 'transfer') {
+                entry.fromAccount = document.getElementById('transfer-from').value;
+                entry.toAccount = document.getElementById('transfer-to').value;
+                if(entry.fromAccount === entry.toAccount) { alert('同じアカウント同士での振替はできません'); return; }
+            } else if(currentInputMode === 'income') {
+                entry.cat = document.getElementById('income-cat').value;
+                entry.pay = document.getElementById('income-pay').value;
+            } else {
+                entry.cat = document.getElementById('cat').value;
+                entry.pay = document.getElementById('pay').value;
+            }
+            
+            if(id) data = data.map(i => i.id === id ? entry : i); else data.push(entry);
+            localStorage.setItem(KEY_DATA, JSON.stringify(data));
+            
+            if(targetDate) currentDisplayDate = new Date(targetDate);
+            
+            closeInputForm();
+            show('cal');
+        }
+
+        function edit(id) {
+            show('cal');
+            
+            const item = JSON.parse(localStorage.getItem(KEY_DATA)).find(i => i.id === id);
+            document.getElementById('edit-id').value = item.id;
+            document.getElementById('date').value = item.start;
+            document.getElementById('price').value = item.price;
+            document.getElementById('memo').value = item.memo || '';
+            
+            if(item.type === 'transfer') {
+                switchInputMode('transfer');
+                setTimeout(() => {
+                    document.getElementById('transfer-from').value = item.fromAccount;
+                    document.getElementById('transfer-to').value = item.toAccount;
+                }, 50);
+            } else if(item.type === 'income') {
+                switchInputMode('income');
+                setTimeout(() => {
+                    document.getElementById('income-cat').value = item.cat;
+                    document.getElementById('income-pay').value = item.pay;
+                }, 50);
+            } else {
+                switchInputMode('expense');
+                setTimeout(() => {
+                    document.getElementById('cat').value = item.cat;
+                    document.getElementById('pay').value = item.pay;
+                }, 50);
+            }
+            
+            document.getElementById('inline-input-card').style.display = 'block';
+            document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
+        }
+
+        function deleteEntry(id) {
+            if(confirm('この項目を削除してもよろしいですか？')) {
+                let data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+                data = data.filter(item => item.id !== id);
+                localStorage.setItem(KEY_DATA, JSON.stringify(data));
+                updateHomeView();
+                if(document.getElementById('history-tab-page').classList.contains('active')) {
+                    renderAllSettingsLists();
+                }
+            }
+        }
+        
+        function updateCatSetting() {
+            const newVal = document.getElementById('new-cat').value;
+            const oldVal = document.getElementById('edit-cat-old').value;
+            if(!newVal) return;
+            let list = JSON.parse(localStorage.getItem('cats') || '["食費", "趣味"]');
+            if(oldVal) list = list.map(i => i === oldVal ? newVal : i); else list.push(newVal);
+            localStorage.setItem('cats', JSON.stringify(list));
+            document.getElementById('new-cat').value = '';
+            document.getElementById('edit-cat-old').value = '';
+            initUI();
+        }
+        function editCatSetting(val) { document.getElementById('new-cat').value = val; document.getElementById('edit-cat-old').value = val; }
+        function delCatSetting(val) { localStorage.setItem('cats', JSON.stringify(JSON.parse(localStorage.getItem('cats')).filter(i => i !== val))); initUI(); }
+
+        function updatePaySetting() {
+            const newName = document.getElementById('new-pay').value;
+            const newBalance = parseInt(document.getElementById('new-pay-balance').value || 0);
+            const oldName = document.getElementById('edit-pay-old').value;
+            if(!newName) return;
+            
+            let obj = getAccountData();
+            if (oldName) delete obj[oldName];
+            obj[newName] = newBalance;
+            
+            localStorage.setItem(KEY_PAYS_OBJ, JSON.stringify(obj));
+            document.getElementById('new-pay').value = '';
+            document.getElementById('new-pay-balance').value = '0';
+            document.getElementById('edit-pay-old').value = '';
+            initUI();
+            updateHomeView();
+        }
+        function editPaySettingField(name, balance) {
+            document.getElementById('new-pay').value = name;
+            document.getElementById('new-pay-balance').value = balance;
+            document.getElementById('edit-pay-old').value = name;
+        }
+        function delPaySetting(name) {
+            let obj = getAccountData();
+            delete obj[name];
+            localStorage.setItem(KEY_PAYS_OBJ, JSON.stringify(obj));
+            initUI();
+            updateHomeView();
+        }
+
+        function exportCSV() {
+            const data = JSON.parse(localStorage.getItem(KEY_DATA) || '[]');
+            if(data.length === 0) { alert('データがありません'); return; }
+            let csv = '日付,タイプ,金額,カテゴリ/振替元,アカウント/振替先,メモ\n';
+            data.forEach(i => { 
+                if(i.type === 'transfer') {
+                    csv += `"${i.start}","振替",${i.price},"${i.fromAccount}","${i.toAccount}","${i.memo || ''}"\n`;
+                } else if(i.type === 'income') {
+                    csv += `"${i.start}","収入",${i.price},"${i.cat}","${i.pay}","${i.memo || ''}"\n`;
+                } else {
+                    csv += `"${i.start}","支出",${i.price},"${i.cat}","${i.pay}","${i.memo || ''}"\n`;
+                }
+            });
+            document.getElementById('csv-output').value = csv;
+        }
+
+        function resetAllData() {
+            if(confirm('登録された家計簿データをすべて削除します。よろしいですか？')) {
+                localStorage.removeItem(KEY_DATA);
+                localStorage.removeItem(KEY_PAYS_OBJ);
+                currentDisplayDate = new Date();
+                initUI();
+                updateHomeView();
+            }
+        }
+    </script>
+</body>
+</html>
