@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>R-KAKEIBO</title>
-    <link rel="apple-touch-icon" href="icon.png">
+    <title>R-KAKEIBO - クラウド同期版</title>
+    <link class="apple-touch-icon" href="icon.png">
     <link rel="icon" type="image/png" href="icon.png">
     <style>
         :root { 
@@ -478,11 +478,11 @@
                 cell.onclick = () => handleDateClick(cell.getAttribute('data-date'));
             });
 
-            // 修正版スワイプイベントを適用
+            // 確実な「touchend判定」スワイプイベントを適用
             setupSwipeEvents(calArea, {
                 onSwipeLeft: () => changeMonth(1),  
                 onSwipeRight: () => changeMonth(-1) 
-            }, 'horizontal');
+            });
         }
 
         function changeMonth(offset) {
@@ -664,43 +664,30 @@
             document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
         }
 
-        // ─── 🛠️ 【暴走修正版】スワイプイベントリスナー ───
-        function setupSwipeEvents(element, callbacks, direction = 'both') {
+        // ─── 🛠️ 【完全修正版】指を離した瞬間に判定するスワイプ処理 ───
+        function setupSwipeEvents(element, callbacks) {
             let touchStartX = 0;
             let touchStartY = 0;
-            let isProcessing = false; // ★連打・暴走を防ぐための安全フラグ
 
             element.addEventListener('touchstart', (e) => {
                 touchStartX = e.changedTouches[0].screenX;
                 touchStartY = e.changedTouches[0].screenY;
-                isProcessing = false; // 新しいタッチが始まったらリセット
             }, { passive: true });
 
-            element.addEventListener('touchmove', (e) => {
-                if (isProcessing) return; // ★すでに1回検知されたら、指を離すまで何もしない
-
-                const touchCurrentX = e.changedTouches[0].screenX;
-                const touchCurrentY = e.changedTouches[0].screenY;
+            element.addEventListener('touchend', (e) => {
+                const touchEndX = e.changedTouches[0].screenX;
+                const touchEndY = e.changedTouches[0].screenY;
                 
-                const diffX = touchCurrentX - touchStartX;
-                const diffY = touchCurrentY - touchStartY;
-                const threshold = 60; // 誤判定を防ぐ最低スライド距離(少し高めに設定)
+                const diffX = touchEndX - touchStartX;
+                const diffY = touchEndY - touchStartY;
+                const threshold = 60; // 横に最低60px動いたらスワイプとみなす
 
-                // 横方向のスワイプ判定
-                if (direction === 'both' || direction === 'horizontal') {
-                    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > threshold) {
-                        isProcessing = true; // ★ブレーキをかける
-                        if (diffX < 0 && callbacks.onSwipeLeft) callbacks.onSwipeLeft();
-                        if (diffX > 0 && callbacks.onSwipeRight) callbacks.onSwipeRight();
-                    }
-                }
-                
-                // 縦方向のスワイプ判定
-                if (direction === 'both' || direction === 'vertical') {
-                    if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > threshold) {
-                        isProcessing = true; // ★ブレーキをかける
-                        if (diffY < 0 && callbacks.onSwipeUp) callbacks.onSwipeUp();
-                        if (diffY > 0 && callbacks.onSwipeDown) callbacks.onSwipeDown();
+                // 縦の動きより横の動きが大きく、かつ基準値を超えている場合のみ処理
+                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > threshold) {
+                    if (diffX < 0) {
+                        if (callbacks.onSwipeLeft) callbacks.onSwipeLeft();
+                    } else {
+                        if (callbacks.onSwipeRight) callbacks.onSwipeRight();
                     }
                 }
             }, { passive: true });
@@ -789,7 +776,7 @@
 
                 if(item.type === 'expense') {
                     monthlyData[monthIdx].expense += price;
-                    catRankSum[item.cat] = (catSums => catRankSum[item.cat] = (catRankSum[item.cat] || 0) + price);
+                    catRankSum[item.cat] = (catRankSum[item.cat] || 0) + price;
                 } else if(item.type === 'income') {
                     monthlyData[monthIdx].income += price;
                 }
