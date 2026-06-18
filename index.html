@@ -478,7 +478,7 @@
                 cell.onclick = () => handleDateClick(cell.getAttribute('data-date'));
             });
 
-            // 確実な「touchend判定」スワイプイベントを適用
+            // バグ対策強化版スワイプイベントを適用
             setupSwipeEvents(calArea, {
                 onSwipeLeft: () => changeMonth(1),  
                 onSwipeRight: () => changeMonth(-1) 
@@ -664,32 +664,54 @@
             document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
         }
 
-        // ─── 🛠️ 【完全修正版】指を離した瞬間に判定するスワイプ処理 ───
+        // ─── 🛠️ 【バグ決着版】ディレイ＆フリック速度を考慮した高精度スワイプ処理 ───
+        let lastSwipeTime = 0; // 連続動作ガード用のタイムスタンプ
+
         function setupSwipeEvents(element, callbacks) {
             let touchStartX = 0;
             let touchStartY = 0;
+            let touchStartTime = 0;
 
             element.addEventListener('touchstart', (e) => {
+                // 前回の切り替えから400ミリ秒以内なら入力を完全無視
+                if (Date.now() - lastSwipeTime < 400) return;
+
                 touchStartX = e.changedTouches[0].screenX;
                 touchStartY = e.changedTouches[0].screenY;
+                touchStartTime = Date.now();
             }, { passive: true });
 
             element.addEventListener('touchend', (e) => {
+                if (Date.now() - lastSwipeTime < 400) return;
+                if (!touchStartTime) return; // 有効なスタートがない場合はスルー
+
                 const touchEndX = e.changedTouches[0].screenX;
                 const touchEndY = e.changedTouches[0].screenY;
+                const duration = Date.now() - touchStartTime;
                 
                 const diffX = touchEndX - touchStartX;
                 const diffY = touchEndY - touchStartY;
-                const threshold = 60; // 横に最低60px動いたらスワイプとみなす
 
-                // 縦の動きより横の動きが大きく、かつ基準値を超えている場合のみ処理
-                if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > threshold) {
-                    if (diffX < 0) {
-                        if (callbacks.onSwipeLeft) callbacks.onSwipeLeft();
-                    } else {
-                        if (callbacks.onSwipeRight) callbacks.onSwipeRight();
-                    }
+                const minDistance = 50; // 最低限必要な移動距離 (50px)
+                const maxDuration = 300; // 素早く動かしたとみなす最大時間 (0.3秒以内)
+
+                // 1. 縦の動き（上下スクロール）の割合が大きい場合は、横スワイプを完全にキャンセル
+                if (Math.abs(diffY) > Math.abs(diffX) * 0.8) return;
+
+                // 2. 移動距離が足りない、またはダラダラ遅い動きの場合は無視
+                if (Math.abs(diffX) < minDistance || duration > maxDuration) return;
+
+                // 3. 条件クリアで処理実行
+                lastSwipeTime = Date.now(); // タイムスタンプ更新（安全ブレーキ）
+                
+                if (diffX < 0) {
+                    if (callbacks.onSwipeLeft) callbacks.onSwipeLeft();
+                } else {
+                    if (callbacks.onSwipeRight) callbacks.onSwipeRight();
                 }
+                
+                // 変数クリア
+                touchStartTime = 0;
             }, { passive: true });
         }
 
