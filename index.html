@@ -147,7 +147,7 @@
         .analytics-table td:first-child { text-align: center; font-weight: 600; }
         .analytics-total-row { background-color: #f1f5f9; font-weight: 700; }
 
-        .rank-badge { inline-block; width: 18px; height: 18px; background: #cbd5e1; color: #475569; text-align: center; line-height: 18px; border-radius: 50%; font-size: 0.75em; margin-right: 8px; font-weight: 700; }
+        .rank-badge { display: inline-block; width: 18px; height: 18px; background: #cbd5e1; color: #475569; text-align: center; line-height: 18px; border-radius: 50%; font-size: 0.75em; margin-right: 8px; font-weight: 700; }
         .rank-1 { background: #fef3c7; color: #b45309; }
         .rank-2 { background: #f1f5f9; color: #475569; }
         .rank-3 { background: #ffedd5; color: #c2410c; }
@@ -334,7 +334,6 @@
         let currentInputMode = 'expense';
         let selectedDateStr = "";
 
-        // 初回起動時・当日日付の初期セット
         const t = new Date();
         selectedDateStr = `${t.getFullYear()}-${String(t.getMonth()+1).padStart(2,'0')}-${String(t.getDate()).padStart(2,'0')}`;
 
@@ -479,6 +478,7 @@
                 cell.onclick = () => handleDateClick(cell.getAttribute('data-date'));
             });
 
+            // 修正版スワイプイベントを適用
             setupSwipeEvents(calArea, {
                 onSwipeLeft: () => changeMonth(1),  
                 onSwipeRight: () => changeMonth(-1) 
@@ -491,20 +491,16 @@
             closeInputForm();
         }
 
-        // カレンダーの日付タップ時挙動：下部の対応する日付位置まで自動スクロール
         function handleDateClick(dateStr) {
             selectedDateStr = dateStr;
             document.getElementById('date').value = dateStr;
             
-            // カレンダー枠線デザインの即時リフレッシュ
             renderCalendar();
 
-            // 下部明細リストの中の該当ターゲットにジャンプ
             const targetBlock = document.getElementById(`day-block-${dateStr}`);
             if (targetBlock) {
                 targetBlock.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
                 
-                // フワッと光るエフェクトの付与
                 targetBlock.classList.add('highlight-target');
                 setTimeout(() => {
                     targetBlock.classList.remove('highlight-target');
@@ -512,7 +508,6 @@
             }
         }
 
-        // 内訳カードの「追加」ボタンが押された時のフォーム起動
         window.openFormWithSelectedDate = () => {
             document.getElementById('edit-id').value = '';
             document.getElementById('price').value = '';
@@ -523,7 +518,6 @@
             document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
         };
 
-        // 表示月（カレンダー連動）のデータをシームレスに一覧表示する関数
         function renderSeamlessHistory() {
             const year = currentDisplayDate.getFullYear();
             const month = currentDisplayDate.getMonth();
@@ -531,7 +525,6 @@
             
             const container = document.getElementById('seamless-history-list');
             
-            // カレンダー対象月のアイテムのみを抽出し、日付の昇順で並び替え
             const monthItems = kakeiboData
                 .filter(i => i.date && i.date.startsWith(currentMonthPrefix))
                 .sort((a, b) => a.date.localeCompare(b.date));
@@ -541,7 +534,6 @@
                 return;
             }
 
-            // 日付ごとにグループ分けしてHTMLを生成
             const grouped = {};
             monthItems.forEach(item => {
                 if (!grouped[item.date]) grouped[item.date] = [];
@@ -585,7 +577,6 @@
 
             container.innerHTML = html;
 
-            // イベント割り当て
             container.querySelectorAll('.btn-edit').forEach(b => b.onclick = () => editItem(b.getAttribute('data-id')));
             container.querySelectorAll('.btn-del').forEach(b => b.onclick = () => deleteItem(b.getAttribute('data-id')));
         }
@@ -673,42 +664,48 @@
             document.getElementById('inline-input-card').scrollIntoView({ behavior: 'smooth' });
         }
 
+        // ─── 🛠️ 【暴走修正版】スワイプイベントリスナー ───
         function setupSwipeEvents(element, callbacks, direction = 'both') {
             let touchStartX = 0;
             let touchStartY = 0;
-            let touchEndX = 0;
-            let touchEndY = 0;
-            const threshold = 50; 
+            let isProcessing = false; // ★連打・暴走を防ぐための安全フラグ
 
             element.addEventListener('touchstart', (e) => {
                 touchStartX = e.changedTouches[0].screenX;
                 touchStartY = e.changedTouches[0].screenY;
+                isProcessing = false; // 新しいタッチが始まったらリセット
             }, { passive: true });
 
-            element.addEventListener('touchend', (e) => {
-                touchEndX = e.changedTouches[0].screenX;
-                touchEndY = e.changedTouches[0].screenY;
-                handleGesture();
-            }, { passive: true });
+            element.addEventListener('touchmove', (e) => {
+                if (isProcessing) return; // ★すでに1回検知されたら、指を離すまで何もしない
 
-            function handleGesture() {
-                const diffX = touchEndX - touchStartX;
-                const diffY = touchEndY - touchStartY;
+                const touchCurrentX = e.changedTouches[0].screenX;
+                const touchCurrentY = e.changedTouches[0].screenY;
+                
+                const diffX = touchCurrentX - touchStartX;
+                const diffY = touchCurrentY - touchStartY;
+                const threshold = 60; // 誤判定を防ぐ最低スライド距離(少し高めに設定)
 
+                // 横方向のスワイプ判定
                 if (direction === 'both' || direction === 'horizontal') {
                     if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > threshold) {
+                        isProcessing = true; // ★ブレーキをかける
                         if (diffX < 0 && callbacks.onSwipeLeft) callbacks.onSwipeLeft();
                         if (diffX > 0 && callbacks.onSwipeRight) callbacks.onSwipeRight();
                     }
                 }
+                
+                // 縦方向のスワイプ判定
                 if (direction === 'both' || direction === 'vertical') {
                     if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > threshold) {
+                        isProcessing = true; // ★ブレーキをかける
                         if (diffY < 0 && callbacks.onSwipeUp) callbacks.onSwipeUp();
                         if (diffY > 0 && callbacks.onSwipeDown) callbacks.onSwipeDown();
                     }
                 }
-            }
+            }, { passive: true });
         }
+
 
         function renderDashboard() {
             const year = currentDisplayDate.getFullYear();
@@ -792,7 +789,7 @@
 
                 if(item.type === 'expense') {
                     monthlyData[monthIdx].expense += price;
-                    catRankSum[item.cat] = (catRankSum[item.cat] || 0) + price;
+                    catRankSum[item.cat] = (catSums => catRankSum[item.cat] = (catRankSum[item.cat] || 0) + price);
                 } else if(item.type === 'income') {
                     monthlyData[monthIdx].income += price;
                 }
