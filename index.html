@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>R-KAKEIBO - クラウド同期版</title>
+    <title>R-KAKEIBO</title>
     <link rel="apple-touch-icon" href="icon.png">
     <link rel="icon" type="image/png" href="icon.png">
     <style>
@@ -42,7 +42,7 @@
         .user-profile button { background: none; border: none; color: var(--danger); cursor: pointer; font-weight: bold; font-size: 13px; padding: 4px 8px; border-radius: 6px; }
         .user-profile button:hover { background: #fee2e2; }
         
-        /* 総資産表示スタイル（分析タブへ） */
+        /* 総資産表示スタイル */
         .total-assets { text-align: center; background: linear-gradient(135deg, #6366f1, #4f46e5); color: white; padding: 16px; border-radius: 16px; margin-bottom: 16px; }
         .total-assets h2 { margin: 0; font-size: 0.9em; opacity: 0.9; font-weight: 500; letter-spacing: 0.05em; }
         .total-assets .amount { font-size: 1.8em; font-weight: 700; margin-top: 4px; display: block; }
@@ -53,7 +53,7 @@
         .cal-nav-btn { background: #f1f5f9; color: var(--text); border: none; padding: 6px 12px; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.85em; transition: all 0.2s; }
         .cal-nav-btn:hover { background: #e2e8f0; }
 
-        /* カレンダーコンパクト化 */
+        /* カレンダーコンパクト化と操作性向上 */
         table { width: 100%; border-collapse: collapse; table-layout: fixed; }
         th { text-align: center; padding: 6px; font-size: 0.75em; color: var(--text-muted); font-weight: 600; }
         td { height: 52px; border: 1px solid #f1f5f9; text-align: center; vertical-align: top; font-size: 0.85em; cursor: pointer; padding: 2px 1px; box-sizing: border-box; position: relative; }
@@ -65,9 +65,10 @@
         .color-expense { color: var(--danger); } 
         .color-income { color: var(--success); }  
 
-        /* 今日の日付を目立たせるスタイル */
+        /* 選択された日付、今日の日付のスタイル */
         td.calendar-td-today { background-color: #eff6ff; border: 2px solid #3b82f6; border-radius: 4px; }
         td.calendar-td-today .day-num { color: #1d4ed8; font-weight: 700; }
+        td.calendar-td-selected { background-color: #f0fdf4; border: 2px solid #22c55e; border-radius: 4px; }
 
         /* ナビゲーションバー */
         nav { display: flex; gap: 8px; margin-bottom: 16px; }
@@ -83,8 +84,9 @@
         .summary-item { font-size: 0.75em; padding: 3px 0; display: flex; justify-content: space-between; align-items: center; color: #334155; }
         .summary-item span:last-child { font-weight: 600; }
 
-        /* 本日の内訳リスト */
+        /* 本日の内訳リストとスワイプ用コンテナ */
         .daily-section-title { font-size: 0.95em; font-weight: 700; margin: 0 0 10px 0; display: flex; align-items: center; gap: 6px; color: #334155; }
+        #daily-card-container { touch-action: pan-x; } /* 上下スワイプをJSで制御するためブラウザの標準スクロール挙動を制限 */
         .history-item { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 12px; margin-bottom: 6px; border: 1px solid #f1f5f9; background: #fff; border-left: 4px solid #cbd5e1; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.02); }
         .history-item.expense { border-left-color: var(--danger); }
         .history-item.income { border-left-color: var(--success); }
@@ -165,7 +167,7 @@
         </nav>
 
         <div id="cal-page" class="page active">
-            <div class="card" id="calendar-area" style="padding: 12px;"></div>
+            <div class="card" id="calendar-area" style="padding: 12px; touch-action: pan-y;"></div>
 
             <div id="inline-input-card" class="card" style="display: none; border: 2px solid var(--primary); background: #fafafa;">
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -206,7 +208,7 @@
                 <button class="main-btn" style="margin-top:10px;" onclick="save()">保存</button>
             </div>
             
-            <div class="card" style="margin-bottom: 12px;">
+            <div class="card" id="daily-card-container" style="margin-bottom: 12px;">
                 <h3 class="daily-section-title" id="daily-title">📋 本日の内訳</h3>
                 <div id="daily-history-list" style="font-size:13px; color:var(--text-muted); text-align: center; padding: 10px 0;">
                     日付をタップするとその日の明細が表示されます
@@ -443,21 +445,35 @@
                 if(dailyExpenseSum[dateStr]) priceHtml += `<span class="day-price color-expense">-${Math.round(dailyExpenseSum[dateStr]/100)/10}k</span>`;
                 if(dailyIncomeSum[dateStr]) priceHtml += `<span class="day-price color-income">+${Math.round(dailyIncomeSum[dateStr]/100)/10}k</span>`;
                 
-                const isToday = (dateStr === todayStr) ? ' class="calendar-td-today"' : '';
+                // クラス設定（選択日を最優先に目立たせる）
+                let cellClass = 'cal-cell';
+                if (dateStr === selectedDateStr) {
+                    cellClass += ' calendar-td-selected';
+                } else if (dateStr === todayStr) {
+                    cellClass += ' calendar-td-today';
+                }
                 
-                html += `<td${isToday} data-date="${dateStr}" class="cal-cell">
+                html += `<td class="${cellClass}" data-date="${dateStr}">
                             <span class="day-num">${d}</span>
                             ${priceHtml}
                          </td>`;
             }
             html += '</tr></table>';
-            document.getElementById('calendar-area').innerHTML = html;
+            
+            const calArea = document.getElementById('calendar-area');
+            calArea.innerHTML = html;
 
             document.getElementById('cal-prev').onclick = () => changeMonth(-1);
             document.getElementById('cal-next').onclick = () => changeMonth(1);
             document.querySelectorAll('.cal-cell').forEach(cell => {
                 cell.onclick = () => handleDateClick(cell.getAttribute('data-date'));
             });
+
+            // 【新機能】カレンダーの左右スワイプ設定
+            setupSwipeEvents(calArea, {
+                onSwipeLeft: () => changeMonth(1),  // 左スワイプで翌月
+                onSwipeRight: () => changeMonth(-1) // 右スワイプで前月
+            }, 'horizontal');
         }
 
         function changeMonth(offset) {
@@ -466,21 +482,36 @@
             closeInputForm();
         }
 
-        // カレンダーの日付タップ時の挙動
         function handleDateClick(dateStr) {
             selectedDateStr = dateStr;
-            // フォームのデフォルト日付を更新
             document.getElementById('date').value = dateStr;
             
-            // 新規入力用にフォームをクリアして開く
             document.getElementById('edit-id').value = '';
             document.getElementById('price').value = '';
             document.getElementById('memo').value = '';
             switchInputMode('expense');
             document.getElementById('inline-input-card').style.display = 'block';
             
-            // 下部のリストを選択日に合わせて更新
-            renderDailyHistory();
+            updateHomeView(); // 選択されたマスに色を塗るために再描画
+        }
+
+        // 指定された日数分、選択日を移動させる関数（上下スワイプ用）
+        function changeSelectedDate(dayOffset) {
+            if(!selectedDateStr) return;
+            const current = new Date(selectedDateStr);
+            current.setDate(current.getDate() + dayOffset);
+            
+            const year = current.getFullYear();
+            const month = String(current.getMonth() + 1).padStart(2, '0');
+            const day = String(current.getDate()).padStart(2, '0');
+            selectedDateStr = `${year}-${month}-${day}`;
+            
+            // カレンダーの表示月とズレた場合はカレンダーの月も同期させる
+            currentDisplayDate.setFullYear(year);
+            currentDisplayDate.setMonth(current.getMonth());
+            
+            document.getElementById('date').value = selectedDateStr;
+            updateHomeView();
         }
 
         window.closeInputForm = () => {
@@ -569,7 +600,6 @@
         function renderDailyHistory() {
             if(!selectedDateStr) return;
             
-            // 見出しを選択日に変更
             const [, m, d] = selectedDateStr.split('-');
             document.getElementById('daily-title').innerText = `📋 ${parseInt(m)}月${parseInt(d)}日の内訳`;
 
@@ -577,7 +607,7 @@
             const container = document.getElementById('daily-history-list');
             
             if(targetData.length === 0) {
-                container.innerHTML = `<div style="padding:10px 0; color:var(--text-muted);">この日の登録データはありません</div>`;
+                container.innerHTML = `<div style="padding:20px 0; color:var(--text-muted); font-weight:500;">この日の登録データはありません<br><span style="font-size:0.85em; opacity:0.7;">↕ 上下スワイプで日付変更</span></div>`;
                 return;
             }
 
@@ -604,6 +634,58 @@
             container.querySelectorAll('.btn-edit').forEach(b => b.onclick = () => editItem(b.getAttribute('data-id')));
             container.querySelectorAll('.btn-del').forEach(b => b.onclick = () => deleteItem(b.getAttribute('data-id')));
         }
+
+        // 【新機能】本日の内訳カード全体への上下スワイプイベント設定
+        const dailyContainer = document.getElementById('daily-card-container');
+        setupSwipeEvents(dailyContainer, {
+            onSwipeUp: () => changeSelectedDate(1),   // 上スワイプで翌日
+            onSwipeDown: () => changeSelectedDate(-1) // 下スワイプで前日
+        }, 'vertical');
+
+
+        // ─── 🛠️ 汎用スワイプイベントリスナー定義 ───
+        function setupSwipeEvents(element, callbacks, direction = 'both') {
+            let touchStartX = 0;
+            let touchStartY = 0;
+            let touchEndX = 0;
+            let touchEndY = 0;
+            
+            // 誤判定を防ぐための最低スワイプ距離（ピクセル）
+            const threshold = 50; 
+
+            element.addEventListener('touchstart', (e) => {
+                touchStartX = e.changedTouches[0].screenX;
+                touchStartY = e.changedTouches[0].screenY;
+            }, { passive: true });
+
+            element.addEventListener('touchend', (e) => {
+                touchEndX = e.changedTouches[0].screenX;
+                touchEndY = e.changedTouches[0].screenY;
+                handleGesture();
+            }, { passive: true });
+
+            function handleGesture() {
+                const diffX = touchEndX - touchStartX;
+                const diffY = touchEndY - touchStartY;
+
+                // 横方向のスワイプ判定
+                if (direction === 'both' || direction === 'horizontal') {
+                    if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > threshold) {
+                        if (diffX < 0 && callbacks.onSwipeLeft) callbacks.onSwipeLeft();
+                        if (diffX > 0 && callbacks.onSwipeRight) callbacks.onSwipeRight();
+                    }
+                }
+                
+                // 縦方向のスワイプ判定
+                if (direction === 'both' || direction === 'vertical') {
+                    if (Math.abs(diffY) > Math.abs(diffX) && Math.abs(diffY) > threshold) {
+                        if (diffY < 0 && callbacks.onSwipeUp) callbacks.onSwipeUp();
+                        if (diffY > 0 && callbacks.onSwipeDown) callbacks.onSwipeDown();
+                    }
+                }
+            }
+        }
+
 
         function renderDashboard() {
             const year = currentDisplayDate.getFullYear();
